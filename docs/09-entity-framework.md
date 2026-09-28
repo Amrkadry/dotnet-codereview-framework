@@ -30,7 +30,7 @@ A password in the connection string. `TrustServerCertificate=True` masking a cer
 
 ## Example
 
-Reference run: the EF connection string carried `user id=svc_app;password=...` in cleartext and shipped in the build output (`SEC-CFG-001`, CVSS 8.8).
+Reference run: the EF connection string carried `user id=svc_app;password=%DB_PASSWORD%` in cleartext and shipped in the build output (`SEC-CFG-001`, CVSS 8.8).
 
 ## Remediation
 

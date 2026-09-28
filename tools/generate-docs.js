@@ -121,7 +121,7 @@ doc('09-entity-framework.md', 'Entity Framework', {
   'What Can Be Automated': 'Connection-string secret detection (deterministic, see `rules/gitleaks/dotnet-config.toml`); `TrustServerCertificate=true` detection; missing `Encrypt=True`.',
   'What Requires Manual Review': 'Whether eager-loading choices match real access patterns.',
   'Common Failure Modes': 'A password in the connection string. `TrustServerCertificate=True` masking a certificate problem. Long-lived contexts accumulating tracked entities.',
-  Example: 'Reference run: the EF connection string carried `user id=svc_app;password=...` in cleartext and shipped in the build output (`SEC-CFG-001`, CVSS 8.8).',
+  Example: 'Reference run: the EF connection string carried `user id=svc_app;password=%DB_PASSWORD%` in cleartext and shipped in the build output (`SEC-CFG-001`, CVSS 8.8).',
   Remediation: 'Use Integrated Security so no password exists; otherwise encrypt the config section or use a secret store; set `Encrypt=True` with proper certificate validation.'
 });
 

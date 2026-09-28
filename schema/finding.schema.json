@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moraa.dev/schema/dotnet-moraa-codereviewer/finding.schema.json",
+  "title": "dotnet-moraa-codereviewer canonical finding",
+  "description": "Single source of truth for one deduplicated finding. Markdown, SARIF and executive views are PROJECTIONS of this object and must never carry facts that are absent here.",
+  "type": "object",
+  "required": ["findingId", "title", "category", "severity", "confidence", "status", "location", "evidence", "problem", "impact", "recommendation", "sources"],
+  "additionalProperties": false,
+  "properties": {
+    "findingId": {
+      "type": "string",
+      "pattern": "^(SEC|CFG|DEP|CODE|ARCH|PERF|REL|TEST|OBS|LOGIC|PROC)-[A-Z0-9]+-[0-9]{3}$",
+      "description": "Stable canonical id, e.g. SEC-AUTHZ-001. Never reused, never renumbered."
+    },
+    "legacyId": {
+      "type": "string",
+      "description": "Id from a previous report iteration, kept so earlier deliverables remain traceable."
+    },
+    "title": { "type": "string", "minLength": 8, "maxLength": 120 },
+    "category": {
+      "type": "string",
+      "enum": ["security", "code-quality", "architecture", "performance", "reliability", "configuration", "dependency", "testing", "deployment", "observability", "process"]
+    },
+    "subcategory": { "type": "string" },
+    "severity": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] },
+    "severityRationale": {
+      "type": "string",
+      "description": "Required when severity diverges from the CVSS base severity, explaining the business-risk adjustment."
+    },
+    "confidence": { "type": "string", "enum": ["CONFIRMED", "LIKELY", "POSSIBLE", "UNVERIFIED"] },
+    "cvss": {
+      "oneOf": [
+        { "type": "null", "description": "N/A - use for maintainability, architecture, formatting and test-quality findings where the scoring model is not meaningful." },
+        {
+          "type": "object",
+          "required": ["version", "score", "vector", "severity"],
+          "additionalProperties": false,
+          "properties": {
+            "version": { "const": "3.1" },
+            "score": { "type": "number", "minimum": 0, "maximum": 10 },
+            "vector": { "type": "string", "pattern": "^CVSS:3\\.1/AV:[NALP]/AC:[LH]/PR:[NLH]/UI:[NR]/S:[UC]/C:[NLH]/I:[NLH]/A:[NLH]$" },
+            "severity": { "type": "string", "enum": ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+            "note": { "type": "string" },
+            "conditionalScore": {
+              "type": "object",
+              "description": "Alternate score if an UNVERIFIED precondition proves true. Never reported as the headline score.",
+              "properties": {
+                "score": { "type": "number" },
+                "vector": { "type": "string" },
+                "condition": { "type": "string" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "cwe": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^CWE-[0-9]+$" }
+    },
+    "owasp": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "OWASP Top 10 2021 category ids, e.g. A01:2021."
+    },
+    "location": {
+      "type": "object",
+      "required": ["file"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "description": "Repo-relative path." },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "class": { "type": "string" },
+        "method": { "type": "string" },
+        "additionalLocations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": { "type": "string" },
+              "startLine": { "type": "integer" },
+              "note": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["snippet"],
+      "additionalProperties": false,
+      "properties": {
+        "snippet": { "type": "string", "description": "Minimal verbatim code. Secrets MUST be redacted." },
+        "language": { "type": "string", "default": "csharp" },
+        "toolOutput": { "type": "string", "description": "Verbatim tool output supporting the claim, if any." },
+        "redacted": { "type": "boolean", "default": false }
+      }
+    },
+    "problem": { "type": "string" },
+    "impact": { "type": "string" },
+    "attackScenario": { "type": "string" },
+    "rootCause": { "type": "string" },
+    "recommendation": { "type": "string" },
+    "correctedCode": { "type": "string" },
+    "effort": { "type": "string", "enum": ["TRIVIAL", "SMALL", "MEDIUM", "LARGE"] },
+    "priority": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
+    "tests": {
+      "type": "array",
+      "items": { "type": "string", "description": "Test catalog ids that cover this finding." }
+    },
+    "regressionTest": { "type": "string" },
+    "detection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "class": { "type": "string", "enum": ["DETERMINISTIC", "AI_ASSISTED", "DYNAMIC", "MANUAL"] },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "engine": { "type": "string", "enum": ["semgrep", "roslyn", "sonarqube", "gitleaks", "trivy", "dependency-check", "config-xml", "architecture", "custom"] },
+              "ruleId": { "type": "string" },
+              "status": { "type": "string", "enum": ["EXISTS", "PROPOSED", "NOT_POSSIBLE"] }
+            }
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Every independent producer that reported this finding. Length > 1 means it was correlated, NOT that there are multiple findings.",
+      "items": {
+        "type": "object",
+        "required": ["tool", "status"],
+        "properties": {
+          "tool": { "type": "string", "examples": ["manual-review", "claude", "glm", "sonarqube", "gitleaks", "gitleaks-moraa-rules", "msbuild", "fortify", "semgrep", "trivy"] },
+          "sourceFindingId": { "type": "string", "description": "Native rule id, e.g. S2068, dotnet-appsetting-secret." },
+          "status": { "type": "string", "enum": ["REPORTED", "MISSED", "FALSE_NEGATIVE", "NOT_RUN", "CONTRADICTED"] },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "duplicateOf": { "type": "string" },
+        "mergedFrom": { "type": "array", "items": { "type": "string" } },
+        "relatedTo": { "type": "array", "items": { "type": "string" } },
+        "chainsWith": { "type": "array", "items": { "type": "string" }, "description": "Findings whose combination raises severity." },
+        "contradicts": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "status": { "type": "string", "enum": ["OPEN", "FIXED", "FALSE_POSITIVE", "ACCEPTED_RISK", "MITIGATED", "UNVERIFIED"] },
+    "suppression": {
+      "type": "object",
+      "required": ["id", "reason", "owner", "approvedBy", "expiresOn"],
+      "description": "Present only when status is FALSE_POSITIVE or ACCEPTED_RISK. Silent permanent suppression is not permitted: expiresOn is mandatory.",
+      "properties": {
+        "id": { "type": "string" },
+        "reason": { "type": "string", "minLength": 20 },
+        "owner": { "type": "string" },
+        "approvedBy": { "type": "string" },
+        "createdOn": { "type": "string", "format": "date" },
+        "expiresOn": { "type": "string", "format": "date" },
+        "reviewOn": { "type": "string", "format": "date" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "Audit trail of how the claim was checked, including attempts to DISPROVE it.",
+      "properties": {
+        "method": { "type": "string" },
+        "disproofAttempt": { "type": "string" },
+        "outcome": { "type": "string", "enum": ["CONFIRMED", "CORRECTED", "STRENGTHENED", "CLARIFIED", "WITHDRAWN"] },
+        "verifiedOn": { "type": "string", "format": "date" },
+        "environmentDependent": { "type": "boolean" },
+        "openQuestion": { "type": "string" }
+      }
+    },
+    "references": { "type": "array", "items": { "type": "string" } }
+  }
+}

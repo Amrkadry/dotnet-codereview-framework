@@ -1,0 +1,418 @@
+# dotnet-moraa-codereviewer — Semgrep rules for .NET findings that are DETERMINISTIC.
+#
+# Scope discipline: only patterns a rule can decide reliably are here. Findings classified
+# AI_ASSISTED in the canonical JSON (for example SEC-AUTHZ-002, a role read from a CRM column
+# that was never requested) are deliberately absent — they need cross-method dataflow plus API
+# semantics, and a rule that half-detects them produces noise instead of signal.
+#
+# Run: semgrep --config rules/semgrep/dotnet-moraa.yaml --sarif -o semgrep.sarif .
+
+rules:
+  # ---------------------------------------------------------------- SEC-CRYPTO-001
+  - id: moraa-dotnet-disable-cert-validation
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      TLS certificate validation is disabled process-wide. ServerCertificateValidationCallback is a
+      STATIC property on ServicePointManager, so one assignment disables validation for every
+      outbound HTTPS request in the worker process, permanently. Scope any override to a single
+      HttpClientHandler instead, or install the internal CA in the machine trust store.
+    metadata:
+      moraa-finding: SEC-CRYPTO-001
+      cwe: ["CWE-295: Improper Certificate Validation"]
+      owasp: ["A02:2021 Cryptographic Failures"]
+      confidence: HIGH
+      references: ["https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5359"]
+    patterns:
+      - pattern-either:
+          - pattern: ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
+          - pattern: ServicePointManager.ServerCertificateValidationCallback = (...) => true;
+          - pattern: ServicePointManager.ServerCertificateValidationCallback += (...) => true;
+          - pattern: $H.ServerCertificateCustomValidationCallback = (...) => true;
+
+  # ------------------------------------------------------------------ SEC-CORS-001
+  - id: moraa-dotnet-cors-reflected-origin
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      The request Origin header is reflected into Access-Control-Allow-Origin with no allow-list.
+      Combined with Access-Control-Allow-Credentials, or with unauthenticated endpoints, this lets
+      any site read responses from this API through a victim's browser — a pivot into an internal
+      network. Compare Origin against an explicit allow-list by exact string match.
+    metadata:
+      moraa-finding: SEC-CORS-001
+      cwe: ["CWE-346: Origin Validation Error", "CWE-942: Permissive Cross-domain Policy"]
+      owasp: ["A01:2021 Broken Access Control"]
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $O = $REQ.Headers["Origin"];
+              ...
+              $RESP.AddHeader("Access-Control-Allow-Origin", $O);
+          - pattern: $RESP.AddHeader("Access-Control-Allow-Origin", $REQ.Headers["Origin"]);
+          - pattern: $RESP.Headers.Add("Access-Control-Allow-Origin", $REQ.Headers["Origin"]);
+
+  # ------------------------------------------------------------------ SEC-CORS-001 (b)
+  - id: moraa-dotnet-cors-wildcard-with-credentials
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Access-Control-Allow-Origin '*' together with Allow-Credentials 'true' is rejected by browsers
+      and signals a misunderstood CORS model. Use an explicit allow-list.
+    metadata:
+      moraa-finding: SEC-CORS-001
+      cwe: ["CWE-942"]
+      confidence: HIGH
+    patterns:
+      - pattern: |
+          $RESP.AddHeader("Access-Control-Allow-Origin", "*");
+          ...
+          $RESP.AddHeader("Access-Control-Allow-Credentials", "true");
+
+  # ------------------------------------------------------------------ SEC-CRYPTO-002
+  - id: moraa-dotnet-static-zero-iv
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Symmetric encryption with an all-zero or constant IV makes ciphertext deterministic, leaking
+      equality of plaintexts. Generate a fresh random IV per operation and prepend it, or use AES-GCM.
+    metadata:
+      moraa-finding: SEC-CRYPTO-002
+      cwe: ["CWE-329: Generation of Predictable IV with CBC Mode", "CWE-1204"]
+      owasp: ["A02:2021"]
+      confidence: HIGH
+    patterns:
+      - pattern: |
+          byte[] $IV = new byte[$N];
+          ...
+          $AES.IV = $IV;
+
+  - id: moraa-dotnet-weak-pbkdf2-iterations
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      Rfc2898DeriveBytes with a very low iteration count. Current guidance is >=600,000 for
+      PBKDF2-SHA256, or use Argon2id. A low count makes offline brute force cheap.
+    metadata:
+      moraa-finding: SEC-CRYPTO-002
+      cwe: ["CWE-916: Use of Password Hash With Insufficient Computational Effort"]
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: new Rfc2898DeriveBytes($P, $S, 100)
+          - pattern: new Rfc2898DeriveBytes($P, $S, 1000)
+          - pattern: new Rfc2898DeriveBytes($P, $S, 10000)
+
+  # ------------------------------------------------------------------ SEC-CRYPTO-003
+  - id: moraa-dotnet-sftp-accept-any-hostkey
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      SSH host-key verification is disabled, so the SFTP server cannot be authenticated and the
+      channel is trivially MITM-able. Set SshHostKeyFingerprint to the pinned server key and fail
+      closed on mismatch.
+    metadata:
+      moraa-finding: SEC-CRYPTO-003
+      cwe: ["CWE-322: Key Exchange without Entity Authentication"]
+      owasp: ["A02:2021"]
+      confidence: HIGH
+    pattern: GiveUpSecurityAndAcceptAnySshHostKey = true
+
+  # -------------------------------------------------------------------- SEC-LOG-001
+  - id: moraa-dotnet-log-request-body
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      A full HTTP request or response body is being written to the log with no masking. In a
+      regulated application these bodies carry PII. Log a correlation id and metadata; if a body is
+      required, pass it through an allow-list masking projection first.
+    metadata:
+      moraa-finding: SEC-LOG-001
+      cwe: ["CWE-532: Insertion of Sensitive Information into Log File"]
+      owasp: ["A09:2021 Security Logging and Monitoring Failures"]
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $LOG.ForContext("RequestBody", $B)
+          - pattern: $LOG.ForContext("ResponseBody", $B)
+          - pattern: |
+              $B = await $REQ.Content.ReadAsStringAsync();
+              ...
+              $LOG.Information($FMT, ..., $B, ...)
+
+  - id: moraa-dotnet-log-dir-under-basedirectory
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      A log or upload directory is created under AppDomain.CurrentDomain.BaseDirectory, i.e. inside
+      the webroot, so IIS's static handler may serve its contents over HTTP. Write outside the
+      webroot and add a request-filtering deny rule.
+    metadata:
+      moraa-finding: SEC-LOG-001, SEC-FILE-001
+      cwe: ["CWE-552: Files or Directories Accessible to External Parties"]
+      confidence: HIGH
+    patterns:
+      - pattern: Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $SUB)
+
+  # ------------------------------------------------------------------- SEC-FILE-001
+  - id: moraa-dotnet-absolute-path-in-response
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      An absolute server path is returned to the caller, disclosing the deployment directory layout.
+      Return an opaque identifier instead.
+    metadata:
+      moraa-finding: SEC-FILE-001
+      cwe: ["CWE-209: Generation of Error Message Containing Sensitive Information"]
+      confidence: MEDIUM
+    patterns:
+      - pattern: |
+          $P = Path.Combine(...);
+          ...
+          $RESULT.Add("filePath", $P);
+
+  - id: moraa-dotnet-timestamp-filename
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      A filename derived only from a timestamp is both enumerable and collision-prone: two writes in
+      the same second overwrite each other silently. Use Guid.NewGuid() and FileMode.CreateNew.
+    metadata:
+      moraa-finding: SEC-FILE-001, CODE-CONC-002
+      cwe: ["CWE-340: Generation of Predictable Numbers or Identifiers"]
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $"...{DateTime.Now:yyyyMMddHHmmss}..."
+          - pattern: $"...{DateTime.UtcNow:yyyyMMddHHmmss}..."
+
+  # ------------------------------------------------------------------- SEC-FILE-002
+  - id: moraa-dotnet-pathcombine-unvalidated-param
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      A method parameter flows into Path.Combine and then into a file operation with no containment
+      check. Reject values where Path.GetFileName(x) != x, and assert the canonical path stays under
+      the intended root.
+    metadata:
+      moraa-finding: SEC-FILE-002
+      cwe: ["CWE-22: Path Traversal", "CWE-73"]
+      confidence: MEDIUM
+    patterns:
+      - pattern: |
+          $T $M(..., string $NAME, ...) { ... }
+      - pattern-inside: |
+          $P = Path.Combine($ROOT, $NAME);
+          ...
+      - pattern-either:
+          - pattern: File.Delete($P)
+          - pattern: File.WriteAllBytes($P, ...)
+          - pattern: File.ReadAllBytes($P)
+      - pattern-not-inside: |
+          if (Path.GetFileName($NAME) != $NAME) { ... }
+          ...
+
+  # -------------------------------------------------------------------- SEC-AUTH-001
+  - id: moraa-dotnet-validatecredentials-no-empty-guard
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      PrincipalContext.ValidateCredentials is called without first rejecting an empty password. It is
+      documented to return true for an empty password against directories that permit unauthenticated
+      binds, which would be a full authentication bypass. Guard explicitly.
+    metadata:
+      moraa-finding: SEC-AUTH-001
+      cwe: ["CWE-287: Improper Authentication", "CWE-521"]
+      owasp: ["A07:2021"]
+      confidence: MEDIUM
+    patterns:
+      - pattern: $PC.ValidateCredentials($U, $P)
+      - pattern-not-inside: |
+          if (string.IsNullOrWhiteSpace($P)) { ... }
+          ...
+      - pattern-not-inside: |
+          if (string.IsNullOrEmpty($P)) { ... }
+          ...
+
+  - id: moraa-dotnet-principalcontext-no-ssl
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      PrincipalContext is constructed without ContextOptions.SecureSocketLayer, so the LDAP bind is
+      not carried over LDAPS and credentials transit unprotected.
+    metadata:
+      moraa-finding: SEC-AUTH-001
+      cwe: ["CWE-319: Cleartext Transmission of Sensitive Information"]
+      confidence: MEDIUM
+    patterns:
+      - pattern: new PrincipalContext(ContextType.Domain, $H, $C, ContextOptions.Negotiate)
+
+  - id: moraa-dotnet-oauth-validate-client-unconditional
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      ValidateClientAuthentication calls Validated() unconditionally, so any client may request a
+      token. Verify a client id and secret.
+    metadata:
+      moraa-finding: SEC-AUTH-001
+      cwe: ["CWE-287"]
+      confidence: HIGH
+    patterns:
+      - pattern: |
+          public override async Task ValidateClientAuthentication($CTX $C) { $C.Validated(); }
+
+  # -------------------------------------------------------------------- SEC-AUTH-002
+  - id: moraa-dotnet-token-lifetime-excessive
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      Access-token lifetime exceeds 60 minutes with no refresh-token provider, so a stolen token is
+      usable for hours and cannot be revoked. Use short access tokens plus revocable refresh tokens.
+    metadata:
+      moraa-finding: SEC-AUTH-002
+      cwe: ["CWE-613: Insufficient Session Expiration"]
+      owasp: ["A07:2021"]
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: AccessTokenExpireTimeSpan = TimeSpan.FromMinutes($N)
+          - pattern: AccessTokenExpireTimeSpan = TimeSpan.FromHours($N)
+
+  # -------------------------------------------------------------------- SEC-INFO-001
+  - id: moraa-dotnet-swagger-unconditional
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      Swagger is registered unconditionally, publishing the full API surface. Gate registration on a
+      configuration flag defaulting to false, and require authentication in shared environments.
+    metadata:
+      moraa-finding: SEC-INFO-001
+      cwe: ["CWE-200: Exposure of Sensitive Information"]
+      owasp: ["A05:2021"]
+      confidence: MEDIUM
+    patterns:
+      - pattern: $CFG.EnableSwagger(...)
+      - pattern-not-inside: |
+          if ($COND) { ... }
+          ...
+
+  # -------------------------------------------------------------------- LOGIC-DEC-001
+  - id: moraa-dotnet-expression-built-by-concat
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      An NCalc expression is constructed from a string that was produced by substitution, so an
+      injected value can alter the expression's structure and therefore the computed result. Bind
+      values as parameters (e.Parameters[name] = value) instead of interpolating them.
+    metadata:
+      moraa-finding: LOGIC-DEC-001
+      cwe: ["CWE-94: Improper Control of Generation of Code", "CWE-1288"]
+      owasp: ["A03:2021 Injection"]
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $E = $S.Replace(...);
+              ...
+              new Expression($E)
+          - pattern: |
+              $E = Regex.Replace(...);
+              ...
+              new Expression($E)
+
+  - id: moraa-dotnet-catch-returns-default
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      A catch block's only action is to return a default value, converting a loud failure into a
+      plausible wrong answer with no log entry. In a calculation path this silently mis-decisions.
+      Propagate the failure, log the identifier, and let the caller decide.
+    metadata:
+      moraa-finding: LOGIC-DEC-001
+      cwe: ["CWE-703: Improper Check or Handling of Exceptional Conditions", "CWE-1069"]
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: try { ... } catch ($E $X) { return 0; }
+          - pattern: try { ... } catch ($E $X) { return null; }
+          - pattern: try { ... } catch ($E $X) { return default; }
+          - pattern: try { ... } catch ($E $X) { return false; }
+
+  # -------------------------------------------------------------------- LOGIC-DEC-002
+  - id: moraa-dotnet-tostring-no-invariant-numeric
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      A monetary or numeric value is stringified with the current culture. On a comma-decimal locale
+      the result is not parseable as a number downstream, silently changing the computed value. Pass
+      CultureInfo.InvariantCulture, or keep the value typed.
+    metadata:
+      moraa-finding: LOGIC-DEC-002
+      cwe: ["CWE-682: Incorrect Calculation"]
+      confidence: MEDIUM
+      references: ["https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1305"]
+    patterns:
+      - pattern-either:
+          - pattern: ((Money)$V).Value.ToString()
+          - pattern: $D.ToString()
+      - metavariable-regex:
+          metavariable: $D
+          regex: '.*(amount|salary|income|limit|price|balance|Amount|Salary|Income|Limit|Balance).*'
+
+  # -------------------------------------------------------------------- PERF-DOS-002
+  - id: moraa-dotnet-regex-no-timeout
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      Regex used without a match timeout. .NET has no default timeout, so a crafted input can cause
+      catastrophic backtracking and pin a CPU core. Pass a TimeSpan, use RegexOptions.NonBacktracking,
+      or set REGEX_DEFAULT_MATCH_TIMEOUT at startup.
+    metadata:
+      moraa-finding: PERF-DOS-002
+      cwe: ["CWE-1333: Inefficient Regular Expression Complexity"]
+      owasp: ["A05:2021"]
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: Regex.Replace($I, $P)
+          - pattern: Regex.Replace($I, $P, $R)
+          - pattern: Regex.IsMatch($I, $P)
+          - pattern: Regex.Match($I, $P)
+          - pattern: new Regex($P)
+          - pattern: new Regex($P, $OPTS)
+      - pattern-not: Regex.Replace($I, $P, $R, $OPTS, $TS)
+      - pattern-not: new Regex($P, $OPTS, $TS)
+
+  # -------------------------------------------------------------------- CODE-CONC-001
+  - id: moraa-dotnet-sync-over-async-content-read
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      Blocking on ReadAsStringAsync().Result occupies a thread-pool thread and risks deadlock,
+      typically on the error path where the server is already under stress. Use the async override.
+    metadata:
+      moraa-finding: CODE-CONC-001
+      cwe: ["CWE-400: Uncontrolled Resource Consumption"]
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: $C.ReadAsStringAsync().Result
+          - pattern: $C.ReadAsStringAsync().GetAwaiter().GetResult()
+
+  # -------------------------------------------------------------------- PERF-DOS-001
+  - id: moraa-dotnet-parse-body-without-contenttype-check
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      JObject.Parse is applied to a raw request body with no Content-Type check, so any non-JSON body
+      throws and is typically collapsed into a 500 rather than a 400 or 415.
+    metadata:
+      moraa-finding: PERF-DOS-001
+      cwe: ["CWE-248: Uncaught Exception"]
+      confidence: MEDIUM
+    patterns:
+      - pattern: JObject.Parse($BODY)
+      - pattern-not-inside: |
+          if ($REQ.Content.Headers.ContentType.MediaType == "application/json") { ... }
+          ...

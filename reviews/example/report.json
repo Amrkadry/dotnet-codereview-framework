@@ -1,0 +1,557 @@
+{
+  "summary": {
+    "review": {
+      "id": "example-2026-01-01",
+      "target": "ExampleApp — a fictional ASP.NET Framework 4.8 Web API used to demonstrate the schema",
+      "sourcePath": "C:/src/ExampleApp",
+      "stack": "ASP.NET Framework 4.8, Web API 2, OWIN, Entity Framework 6",
+      "reviewDate": "2026-01-01",
+      "note": "SYNTHETIC DATA. These findings are illustrative and describe no real application. They exist so `node tools/project-findings.js reviews/example` runs end to end and so every schema feature has a worked example: a CVSS-scored finding, a deliberately N/A one, a severity/CVSS divergence, a conditional score, a tool false negative, a corrected finding, and an expiring suppression."
+    },
+    "generatedAt": "2026-09-28",
+    "totals": {
+      "all": 6,
+      "critical": 2,
+      "high": 1,
+      "medium": 1,
+      "low": 2,
+      "info": 0
+    },
+    "byCategory": {
+      "security": 3,
+      "performance": 1,
+      "architecture": 1,
+      "configuration": 1
+    },
+    "byConfidence": {
+      "CONFIRMED": 5,
+      "LIKELY": 1
+    },
+    "cvss": {
+      "scored": 5,
+      "notApplicable": 1,
+      "max": 9.8
+    },
+    "dependencyQueues": {
+      "security": [],
+      "maintenance": []
+    },
+    "environmentDependent": [
+      {
+        "id": "SEC-AUTH-001",
+        "openQuestion": "Does the directory permit unauthenticated binds? Only a live test settles whether this is MEDIUM or CRITICAL."
+      },
+      {
+        "id": "CFG-WEB-001",
+        "openQuestion": "If the proxy is bypassed or replaced, this becomes live again."
+      }
+    ],
+    "corrections": []
+  },
+  "findings": [
+    {
+      "findingId": "SEC-AUTHZ-001",
+      "title": "No authorization enforced on API controllers",
+      "category": "security",
+      "subcategory": "broken-access-control",
+      "severity": "CRITICAL",
+      "confidence": "CONFIRMED",
+      "cvss": {
+        "version": "3.1",
+        "score": 9.8,
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "severity": "CRITICAL"
+      },
+      "cwe": [
+        "CWE-862"
+      ],
+      "owasp": [
+        "A01:2021"
+      ],
+      "location": {
+        "file": "ExampleApp/Controllers/OrdersController.cs",
+        "startLine": 18,
+        "class": "OrdersController",
+        "method": "GetOrder"
+      },
+      "evidence": {
+        "snippet": "public class OrdersController : ApiController   // no [Authorize]\n{\n    [HttpGet]\n    [Route(\"api/orders/{id}\")]\n    public IHttpActionResult GetOrder(int id)\n    {\n        return Ok(_repo.Find(id));   // no ownership check either\n    }\n}",
+        "language": "csharp"
+      },
+      "problem": "The controller declares no [Authorize] attribute and no global authorization filter is registered, so every action is reachable without a token. The action also returns an object located purely by a client-supplied id.",
+      "impact": "Any unauthenticated caller can read any order by iterating the id, and the same pattern on write actions would allow modification. This is both missing authentication and a horizontal IDOR.",
+      "attackScenario": "GET /api/orders/1..N with no Authorization header returns every order in the system.",
+      "rootCause": "Authorization was assumed to be handled by network placement rather than by the application.",
+      "recommendation": "Register a global AuthorizeAttribute so the default is deny, apply [AllowAnonymous] only where intended, and compare the resolved object's owner against a claim on the caller.",
+      "correctedCode": "// App_Start/WebApiConfig.cs\nconfig.Filters.Add(new AuthorizeAttribute());   // deny by default\n\n// Controllers/OrdersController.cs\n[Authorize]\npublic class OrdersController : ApiController\n{\n    [HttpGet, Route(\"api/orders/{id}\")]\n    public IHttpActionResult GetOrder(int id)\n    {\n        var order = _repo.Find(id);\n        if (order == null) return NotFound();\n\n        var callerId = User.Identity.GetUserId();\n        if (order.CustomerId != callerId) return StatusCode(HttpStatusCode.Forbidden);\n\n        return Ok(order);\n    }\n}",
+      "effort": "MEDIUM",
+      "priority": "P0",
+      "tests": [
+        "B-001",
+        "B-002",
+        "B-003"
+      ],
+      "regressionTest": "Parameterised integration test enumerates every route via ApiExplorer and asserts 401 without a token; a second test asserts 403 when account A requests account B's order.",
+      "detection": {
+        "class": "DETERMINISTIC",
+        "rules": [
+          {
+            "engine": "semgrep",
+            "ruleId": "moraa-dotnet-controller-missing-authorize",
+            "status": "PROPOSED"
+          }
+        ]
+      },
+      "sources": [
+        {
+          "tool": "manual-review",
+          "sourceFindingId": "EX-1",
+          "status": "REPORTED"
+        },
+        {
+          "tool": "sonarqube",
+          "sourceFindingId": "n/a",
+          "status": "MISSED",
+          "note": "no cross-file authorization-coverage rule exists in the Community edition"
+        }
+      ],
+      "correlation": {
+        "relatedTo": [
+          "SEC-CFG-001"
+        ],
+        "chainsWith": [
+          "SEC-CFG-001"
+        ]
+      },
+      "status": "OPEN",
+      "verification": {
+        "method": "Enumerated all controllers and grepped for [Authorize]; inspected global filter registration.",
+        "disproofAttempt": "Checked for a custom AuthorizeAttribute subclass, an IAuthorizationFilter, an <authorization> config section and host-level authentication. None present.",
+        "outcome": "CONFIRMED",
+        "verifiedOn": "2026-01-01",
+        "environmentDependent": false
+      },
+      "references": [
+        "CWE-862",
+        "OWASP A01:2021"
+      ]
+    },
+    {
+      "findingId": "SEC-CFG-001",
+      "title": "Hard-coded database credentials in Web.config",
+      "category": "security",
+      "subcategory": "secrets-management",
+      "severity": "CRITICAL",
+      "severityRationale": "CVSS base is 8.8 HIGH because exploitation presupposes read access to the configuration or build artifact. Business severity is CRITICAL because the credential grants direct database access, bypassing every application control. This field exists to document exactly this kind of deliberate divergence.",
+      "confidence": "CONFIRMED",
+      "cvss": {
+        "version": "3.1",
+        "score": 8.8,
+        "vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+        "severity": "HIGH",
+        "note": "AV:L and PR:L model the need to read the file. S:C because compromising app config yields a separate security authority: the database."
+      },
+      "cwe": [
+        "CWE-798",
+        "CWE-540"
+      ],
+      "owasp": [
+        "A07:2021",
+        "A05:2021"
+      ],
+      "location": {
+        "file": "ExampleApp/Web.config",
+        "startLine": 12
+      },
+      "evidence": {
+        "snippet": "<connectionStrings>\n  <add name=\"AppDb\"\n       connectionString=\"data source=db01;initial catalog=AppDb;user id=svc_app;password=***REDACTED***\"\n       providerName=\"System.Data.SqlClient\" />\n</connectionStrings>",
+        "language": "xml",
+        "redacted": true,
+        "toolOutput": "gitleaks 8.28.0, DEFAULT rules:                 no leaks found\ngitleaks 8.28.0 + rules/gitleaks/dotnet-config.toml:  1 leak (dotnet-connectionstring-password)\n\nThe default ruleset misses low-entropy passwords in XML attributes. This is the\nfalse-negative case the .NET ruleset exists to close."
+      },
+      "problem": "A database password is stored in cleartext in Web.config, and the Release transform does not remove it, so it ships in the deployment artifact.",
+      "impact": "Anyone with the repository, a build artifact or a server backup obtains direct database access without touching the application.",
+      "attackScenario": "A contractor with repository access reads Web.config and connects to db01 directly from the corporate network.",
+      "rootCause": "Configuration is treated as source; no secret store or protected configuration section is in use.",
+      "recommendation": "Rotate the credential, move to Integrated Security so no password exists, or encrypt the configuration section. Add the .NET gitleaks ruleset to CI as a blocking gate with a canary.",
+      "correctedCode": "<!-- Integrated Security: there is no password to leak -->\n<add name=\"AppDb\"\n     connectionString=\"data source=db01;initial catalog=AppDb;Integrated Security=True;Encrypt=True\"\n     providerName=\"System.Data.SqlClient\" />",
+      "effort": "MEDIUM",
+      "priority": "P0",
+      "tests": [
+        "E-001",
+        "E-003",
+        "E-012"
+      ],
+      "regressionTest": "CI runs gitleaks with the .NET ruleset over the tree AND the built package, failing on any finding; a canary secret proves the gate is active.",
+      "detection": {
+        "class": "DETERMINISTIC",
+        "rules": [
+          {
+            "engine": "gitleaks",
+            "ruleId": "dotnet-connectionstring-password",
+            "status": "EXISTS"
+          },
+          {
+            "engine": "sonarqube",
+            "ruleId": "S2068",
+            "status": "EXISTS"
+          }
+        ]
+      },
+      "sources": [
+        {
+          "tool": "manual-review",
+          "sourceFindingId": "EX-2",
+          "status": "REPORTED"
+        },
+        {
+          "tool": "gitleaks-moraa-rules",
+          "sourceFindingId": "dotnet-connectionstring-password",
+          "status": "REPORTED"
+        },
+        {
+          "tool": "gitleaks",
+          "sourceFindingId": "default-ruleset",
+          "status": "FALSE_NEGATIVE",
+          "note": "stock rules reported zero; they match high-entropy cloud tokens, not passwords in XML attributes"
+        }
+      ],
+      "correlation": {
+        "relatedTo": [
+          "SEC-AUTHZ-001"
+        ]
+      },
+      "status": "OPEN",
+      "verification": {
+        "method": "Read all config variants and the built package.",
+        "disproofAttempt": "Checked whether the Release transform scrubs the value. It does not, and the secret is present in the packaged output.",
+        "outcome": "CONFIRMED",
+        "verifiedOn": "2026-01-01",
+        "environmentDependent": false
+      },
+      "references": [
+        "CWE-798",
+        "OWASP A07:2021"
+      ]
+    },
+    {
+      "findingId": "SEC-AUTH-001",
+      "title": "Directory bind accepts an empty password",
+      "category": "security",
+      "subcategory": "authentication",
+      "severity": "HIGH",
+      "confidence": "LIKELY",
+      "cvss": {
+        "version": "3.1",
+        "score": 5.3,
+        "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N",
+        "severity": "MEDIUM",
+        "note": "Scored for the confirmed subset only.",
+        "conditionalScore": {
+          "score": 9.8,
+          "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          "condition": "If the domain controller permits unauthenticated binds, this becomes a full authentication bypass as any known username. Must be tested against the real directory; it cannot be settled from source."
+        }
+      },
+      "cwe": [
+        "CWE-287",
+        "CWE-521"
+      ],
+      "owasp": [
+        "A07:2021"
+      ],
+      "location": {
+        "file": "ExampleApp/Auth/DomainAuth.cs",
+        "startLine": 22,
+        "class": "DomainAuth",
+        "method": "IsValid"
+      },
+      "evidence": {
+        "snippet": "public bool IsValid(string user, string password)\n{\n    using (var pc = new PrincipalContext(ContextType.Domain, _host, null, ContextOptions.Negotiate))\n    {\n        return pc.ValidateCredentials(user, password);   // no empty-password guard, no SSL\n    }\n}",
+        "language": "csharp"
+      },
+      "problem": "ValidateCredentials is called with no guard against an empty password, over a bind that does not request SecureSocketLayer.",
+      "impact": "ValidateCredentials is documented to return true for an empty password against directories that permit unauthenticated binds. If that is the case here, supplying an empty password authenticates as any known username. The bind is also not carried over LDAPS.",
+      "attackScenario": "Submit a login for a known username with an empty password. Whether this succeeds depends on directory configuration, which is why confidence is LIKELY and the 9.8 score is held in conditionalScore rather than reported as the headline.",
+      "rootCause": "A framework helper was used without reading its documented edge cases.",
+      "recommendation": "Reject empty and whitespace credentials before the call, add ContextOptions.SecureSocketLayer, and resolve the host by DNS name so certificate validation can succeed.",
+      "correctedCode": "public bool IsValid(string user, string password)\n{\n    if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(password))\n        return false;                                   // explicit guard\n\n    using (var pc = new PrincipalContext(ContextType.Domain, _host, null,\n               ContextOptions.Negotiate | ContextOptions.SecureSocketLayer))\n    {\n        return pc.ValidateCredentials(user, password);\n    }\n}",
+      "effort": "SMALL",
+      "priority": "P1",
+      "tests": [
+        "A-001",
+        "A-002",
+        "A-003"
+      ],
+      "regressionTest": "Test submits an empty password and a base64 blob decoding to empty, asserting rejection before any directory call.",
+      "detection": {
+        "class": "DETERMINISTIC",
+        "rules": [
+          {
+            "engine": "semgrep",
+            "ruleId": "moraa-dotnet-validatecredentials-no-empty-guard",
+            "status": "PROPOSED"
+          }
+        ]
+      },
+      "sources": [
+        {
+          "tool": "manual-review",
+          "sourceFindingId": "EX-3",
+          "status": "REPORTED"
+        }
+      ],
+      "correlation": {},
+      "status": "OPEN",
+      "verification": {
+        "method": "Read the authentication path.",
+        "disproofAttempt": "Checked whether tokens are JWTs, which would add further attack classes. They are opaque machine-key tickets, so no JWT claim is made here.",
+        "outcome": "CONFIRMED",
+        "verifiedOn": "2026-01-01",
+        "environmentDependent": true,
+        "openQuestion": "Does the directory permit unauthenticated binds? Only a live test settles whether this is MEDIUM or CRITICAL."
+      },
+      "references": [
+        "CWE-287",
+        "Microsoft: PrincipalContext.ValidateCredentials remarks"
+      ]
+    },
+    {
+      "findingId": "PERF-DOS-001",
+      "title": "Regex without a match timeout on a user-reachable path",
+      "category": "performance",
+      "subcategory": "redos",
+      "severity": "MEDIUM",
+      "confidence": "CONFIRMED",
+      "cvss": {
+        "version": "3.1",
+        "score": 5.3,
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+        "severity": "MEDIUM"
+      },
+      "cwe": [
+        "CWE-1333"
+      ],
+      "owasp": [
+        "A05:2021"
+      ],
+      "location": {
+        "file": "ExampleApp/Validation/EmailRule.cs",
+        "startLine": 11
+      },
+      "evidence": {
+        "snippet": "// Nested quantifiers on user input, and no timeout argument.\nprivate static readonly Regex Email = new Regex(@\"^([a-zA-Z0-9_\\-\\.]+)+@([a-zA-Z0-9_\\-\\.]+)+\\.([a-zA-Z]{2,5})$\");",
+        "language": "csharp",
+        "toolOutput": "SonarQube S6444: 1 occurrence (EmailRule.cs:11)"
+      },
+      "problem": "The pattern uses nested quantifiers and is applied to request input with no match timeout. .NET regexes have no default timeout.",
+      "impact": "A crafted input forces catastrophic backtracking, pinning a CPU core for the request's lifetime. Unauthenticated and repeatable, this degrades availability.",
+      "attackScenario": "POST a long crafted local-part; each request occupies a core until the request timeout.",
+      "rootCause": "A copied regex was never reviewed for linear-time matching, and no process-wide timeout was configured.",
+      "recommendation": "Set a process-wide default at startup, pass an explicit TimeSpan, simplify the pattern to remove nested quantifiers, and cap input length before matching.",
+      "correctedCode": "// One line at startup protects every regex in the process\nAppDomain.CurrentDomain.SetData(\"REGEX_DEFAULT_MATCH_TIMEOUT\", TimeSpan.FromSeconds(2));\n\n// And be explicit at the call site, with a non-pathological pattern\nprivate static readonly Regex Email = new Regex(\n    @\"^[^@\\s]{1,64}@[^@\\s]{1,255}$\",\n    RegexOptions.Compiled, TimeSpan.FromMilliseconds(200));",
+      "effort": "TRIVIAL",
+      "priority": "P2",
+      "tests": [
+        "P-004",
+        "P-005"
+      ],
+      "regressionTest": "Test feeds a pathological input and asserts RegexMatchTimeoutException within the bound rather than an unbounded hang.",
+      "detection": {
+        "class": "DETERMINISTIC",
+        "rules": [
+          {
+            "engine": "sonarqube",
+            "ruleId": "S6444",
+            "status": "EXISTS"
+          },
+          {
+            "engine": "semgrep",
+            "ruleId": "moraa-dotnet-regex-no-timeout",
+            "status": "PROPOSED"
+          }
+        ]
+      },
+      "sources": [
+        {
+          "tool": "manual-review",
+          "sourceFindingId": "EX-5",
+          "status": "REPORTED"
+        },
+        {
+          "tool": "sonarqube",
+          "sourceFindingId": "S6444",
+          "status": "REPORTED"
+        }
+      ],
+      "correlation": {
+        "mergedFrom": [
+          "EX-5",
+          "sonarqube:S6444"
+        ]
+      },
+      "status": "OPEN",
+      "verification": {
+        "method": "Inspected every Regex call site for a TimeSpan argument.",
+        "disproofAttempt": "Checked for an AppDomain-level default timeout that would protect all sites. Not present.",
+        "outcome": "CONFIRMED",
+        "verifiedOn": "2026-01-01",
+        "environmentDependent": false
+      },
+      "references": [
+        "CWE-1333"
+      ]
+    },
+    {
+      "findingId": "ARCH-001",
+      "title": "Duplicated calculation logic with divergent behaviour",
+      "category": "architecture",
+      "subcategory": "maintainability",
+      "severity": "LOW",
+      "confidence": "CONFIRMED",
+      "cvss": null,
+      "cwe": [
+        "CWE-1041",
+        "CWE-561"
+      ],
+      "owasp": [],
+      "location": {
+        "file": "ExampleApp/Services/PricingService.cs",
+        "startLine": 40
+      },
+      "evidence": {
+        "snippet": "// PricingService.cs:40  — rounds half-up\nreturn Math.Round(subtotal * rate, 2, MidpointRounding.AwayFromZero);\n\n// LegacyPricing.cs:88  — rounds half-even. Same rule, different answer.\nreturn Math.Round(subtotal * rate, 2);",
+        "language": "csharp"
+      },
+      "problem": "One pricing rule is implemented twice with different rounding behaviour, so the two paths disagree on some inputs.",
+      "impact": "Not a vulnerability, which is why cvss is null — this is the worked example of a category that must never carry a CVSS score. The risk is that a fix applied to one implementation silently misses the other, and that two code paths produce different monetary results for identical inputs.",
+      "rootCause": "A rewrite left the original in place.",
+      "recommendation": "Collapse to one implementation with an explicit, tested rounding policy; delete the other.",
+      "effort": "SMALL",
+      "priority": "P3",
+      "tests": [
+        "L-003",
+        "L-008",
+        "R-004"
+      ],
+      "regressionTest": "Architecture test asserts exactly one implementation of the pricing rule; a unit test pins the rounding policy at the boundary.",
+      "detection": {
+        "class": "DETERMINISTIC",
+        "rules": [
+          {
+            "engine": "sonarqube",
+            "ruleId": "S1871",
+            "status": "EXISTS"
+          }
+        ]
+      },
+      "sources": [
+        {
+          "tool": "manual-review",
+          "sourceFindingId": "EX-4",
+          "status": "REPORTED"
+        },
+        {
+          "tool": "sonarqube",
+          "sourceFindingId": "S1871",
+          "status": "REPORTED"
+        }
+      ],
+      "correlation": {
+        "mergedFrom": [
+          "EX-4",
+          "sonarqube:S1871"
+        ]
+      },
+      "status": "OPEN",
+      "verification": {
+        "method": "Compared both implementations.",
+        "disproofAttempt": "Checked whether the legacy path is dead code; it is still called from the batch job.",
+        "outcome": "CONFIRMED",
+        "verifiedOn": "2026-01-01",
+        "environmentDependent": false
+      },
+      "references": [
+        "CWE-1041"
+      ]
+    },
+    {
+      "findingId": "CFG-WEB-001",
+      "title": "X-Powered-By header exposes the framework",
+      "category": "configuration",
+      "subcategory": "hardening",
+      "severity": "LOW",
+      "confidence": "CONFIRMED",
+      "cvss": {
+        "version": "3.1",
+        "score": 0,
+        "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:N",
+        "severity": "NONE",
+        "note": "No direct impact. Retained as an accepted risk to demonstrate the suppression workflow."
+      },
+      "cwe": [
+        "CWE-200"
+      ],
+      "owasp": [
+        "A05:2021"
+      ],
+      "location": {
+        "file": "ExampleApp/Web.config",
+        "startLine": 60
+      },
+      "evidence": {
+        "snippet": "<!-- X-Powered-By is not removed -->\n<system.webServer>\n  <httpProtocol>\n    <customHeaders />\n  </httpProtocol>\n</system.webServer>",
+        "language": "xml"
+      },
+      "problem": "The X-Powered-By response header is not removed, disclosing the framework in use.",
+      "impact": "Minimal on its own. Included here as the worked example of an ACCEPTED_RISK with a mandatory expiring suppression — the projection refuses to emit a suppression without an expiresOn date, so permanent silent suppression is structurally impossible.",
+      "recommendation": "Remove the header via customHeaders. Accepted for now because an upstream reverse proxy strips it in this environment.",
+      "effort": "TRIVIAL",
+      "priority": "P3",
+      "tests": [
+        "H-005",
+        "N-004"
+      ],
+      "regressionTest": "Integration test asserts the header is absent from responses at the edge.",
+      "detection": {
+        "class": "DETERMINISTIC",
+        "rules": [
+          {
+            "engine": "config-xml",
+            "ruleId": "moraa-cfg-missing-security-headers",
+            "status": "PROPOSED"
+          }
+        ]
+      },
+      "sources": [
+        {
+          "tool": "manual-review",
+          "sourceFindingId": "EX-6",
+          "status": "REPORTED"
+        }
+      ],
+      "correlation": {},
+      "status": "ACCEPTED_RISK",
+      "suppression": {
+        "id": "SUP-2026-001",
+        "reason": "The edge reverse proxy strips X-Powered-By before responses leave the network, so the residual risk is accepted until the next hardening cycle.",
+        "owner": "platform-team",
+        "approvedBy": "security-lead",
+        "createdOn": "2026-01-01",
+        "expiresOn": "2026-07-01",
+        "reviewOn": "2026-06-01"
+      },
+      "verification": {
+        "method": "Inspected the config and confirmed proxy behaviour.",
+        "disproofAttempt": "Verified the proxy genuinely strips the header rather than assuming it.",
+        "outcome": "CONFIRMED",
+        "verifiedOn": "2026-01-01",
+        "environmentDependent": true,
+        "openQuestion": "If the proxy is bypassed or replaced, this becomes live again."
+      },
+      "references": [
+        "CWE-200"
+      ]
+    }
+  ]
+}

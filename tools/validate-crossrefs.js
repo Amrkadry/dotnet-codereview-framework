@@ -20,8 +20,17 @@ if (!dir) { console.error('usage: validate-crossrefs.js <reviewDir>'); process.e
 const repoRoot = path.resolve(__dirname, '..');
 
 // ---------------------------------------------------------------- load catalogs
-const generic = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, 'catalog', 'dotnet-test-cases.json'), 'utf8'));
+// Every catalog/*.json is merged, so adding a catalog file extends coverage without
+// touching this tool. Base catalog = categories A-R; advanced = S-Z.
+const catalogDir = path.join(repoRoot, 'catalog');
+const catalogFiles = fs.readdirSync(catalogDir).filter(f => f.endsWith('.json')).sort();
+const catalogs = catalogFiles.map(f =>
+  JSON.parse(fs.readFileSync(path.join(catalogDir, f), 'utf8')));
+
+const generic = {
+  categories: Object.assign({}, ...catalogs.map(c => c.categories)),
+  tests: catalogs.flatMap(c => c.tests)
+};
 const genericTests = generic.tests;
 
 let localTests = [];

@@ -6,7 +6,7 @@ as much as for modern ASP.NET Core.
 
 Two things make it different from a checklist:
 
-1. **A catalog of 178 concrete .NET test cases**, organised A–R, each with the signal to look for,
+1. **A catalog of 279 concrete .NET test cases**, organised A–Z, each with the signal to look for,
    the pass condition, which stack it applies to, and whether a tool can decide it.
 2. **A canonical JSON model** where Markdown, JSON and SARIF are *generated* projections — so the
    executive summary, the security report and the CI feed cannot disagree with each other.
@@ -18,8 +18,14 @@ that found it *and* the tools that missed it.
 
 ## The test-case catalog
 
-[`catalog/dotnet-test-cases.json`](catalog/dotnet-test-cases.json) — 178 reusable cases. Pull the
-relevant ids into a review and map them to findings.
+279 reusable cases across two files. Pull the relevant ids into a review and map them to findings.
+
+- [`catalog/dotnet-test-cases.json`](catalog/dotnet-test-cases.json) — **A–R, 178 cases.** The
+  OWASP-aligned core.
+- [`catalog/dotnet-test-cases-advanced.json`](catalog/dotnet-test-cases-advanced.json) — **S–Z,
+  101 cases.** What is specific to .NET *as a platform*: its serializers, its reflection surface,
+  its legacy web stack, its RPC frameworks, the federation protocols it ships clients for,
+  HTTP protocol-level issues, and runtime semantics that silently change security decisions.
 
 | | Category | Cases |
 |---|---|--:|
@@ -41,17 +47,60 @@ relevant ids into a review and map them to findings.
 | P | Concurrency, resources and availability | 11 |
 | Q | Data protection, privacy and regulatory | 7 |
 | R | Code-quality signals that carry security weight | 9 |
+| **S** | **Unsafe reflection, type resolution and dynamic code execution** | **14** |
+| **T** | **ASP.NET platform internals** (ViewState, crypto endpoints, path APIs, impersonation) | **14** |
+| **U** | **Template injection and runtime compilation (SSTI)** | **8** |
+| **V** | **WCF, SOAP and legacy service stacks** | **9** |
+| **W** | **Modern .NET surfaces** (SignalR, gRPC, Blazor, Minimal API, hosted services) | **16** |
+| **X** | **Federation protocols** (OAuth 2.0, OpenID Connect, SAML) | **14** |
+| **Y** | **HTTP protocol-level attacks** (smuggling, host header, cache poisoning, splitting) | **11** |
+| **Z** | **Runtime and platform semantics that change security outcomes** | **15** |
 
 Each case is tagged with what can honestly be automated:
 
 | Automatability | Cases | Meaning |
 |---|--:|---|
-| `DETERMINISTIC` | 134 | a rule can decide it reliably |
-| `MANUAL` | 20 | needs business context |
-| `AI_ASSISTED` | 13 | needs cross-file or domain reasoning; propose, human confirms |
-| `DYNAMIC` | 11 | only a running system settles it |
+| `DETERMINISTIC` | 212 | a rule can decide it reliably |
+| `MANUAL` | 32 | needs business context |
+| `DYNAMIC` | 19 | only a running system settles it |
+| `AI_ASSISTED` | 16 | needs cross-file or domain reasoning; propose, human confirms |
 
-…and by stack: 158 apply to both, 17 are ASP.NET Framework specific, 3 are ASP.NET Core specific.
+By stack: 222 apply to both, 41 are ASP.NET Framework specific, 16 are ASP.NET Core specific.
+By priority: 96 critical, 114 high, 64 medium, 5 low.
+
+### Is it exhaustive? No — and that is measurable
+
+`tools/audit-coverage.js` probes the catalog against a maintained list of known-dangerous .NET
+APIs, frameworks and attack classes, and **prints what is not covered**:
+
+```bash
+node tools/audit-coverage.js            # report gaps (exits 0 — gaps are backlog)
+node tools/audit-coverage.js --strict   # fail CI on any gap
+```
+
+```
+test cases    : 279
+categories    : 26
+probes        : 147
+covered       : 147
+gaps          : 0
+coverage      : 100.0%
+```
+
+**100% means "no *known* gaps", never "exhaustive."** The tool cannot know about a surface nobody
+has added a probe for, and it audits *breadth* of classes rather than *depth* within a class. Add a
+probe whenever you learn of a surface the catalog should cover — a failing probe is a backlog item,
+not an error.
+
+Categories S–Z exist because this audit was run against the A–R catalog and **37 of 47 probed
+surfaces came back missing** — including ViewState deserialization RCE, padding-oracle exposure,
+`Type.GetType` injection, `XamlReader.Parse`, SAML signature wrapping, host-header reset poisoning,
+request smuggling, and culture-sensitive comparison bypass. Asking the question with a tool found
+gaps that reading the catalog did not.
+
+Known remaining thinness, stated rather than hidden: ADCS and Kerberos delegation, Azure-specific
+identity misuse, side-channel and crypto oracles beyond padding, SQL Server-side permissions and
+stored-procedure bodies, and desktop/mobile .NET (WPF, MAUI).
 
 A sample case:
 
@@ -226,11 +275,14 @@ Run both. Label both. Validate both.
 ```
 dotnet-codereview-framework/
 ├── README.md
-├── catalog/dotnet-test-cases.json     178 generic .NET test cases (A-R)
+├── catalog/
+│   ├── dotnet-test-cases.json          178 cases, A-R (OWASP-aligned core)
+│   └── dotnet-test-cases-advanced.json 101 cases, S-Z (.NET platform specifics)
 ├── schema/finding.schema.json         canonical contract
 ├── tools/
 │   ├── project-findings.js            canonical -> md + json + sarif, with integrity gate
 │   ├── validate-crossrefs.js          catalog + finding-reference integrity
+│   ├── audit-coverage.js              probes the catalog and PRINTS THE GAPS
 │   ├── generate-docs.js               docs/01..33
 │   └── summarize-gitleaks.js          gitleaks report roll-up
 ├── rules/

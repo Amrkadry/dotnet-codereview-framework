@@ -20,3 +20,12 @@ ci/github-actions.yml:dotnet-appsetting-secret:95
 
 # The same canary text inside the docs generator that emits docs/26-gitleaks.md.
 tools/generate-docs.js:dotnet-appsetting-secret:324
+
+# ---------------------------------------------------------------------------
+# Adapter test fixtures (added 2026-09-28).
+# fixtures/*.json are SYNTHETIC tool outputs used by tools/test-adapters.js to prove each
+# parser reads real tool schemas without the tool installed. They necessarily contain
+# secret-SHAPED strings (all literally "REDACTED") so the secret-parsing paths are exercised.
+# No real credential exists in any fixture. Verified: every value is the literal REDACTED.
+# These are fingerprinted rather than the rules being weakened, per docs/31-false-positives.md.
+fixtures/gitleaks.json:dotnet-connectionstring-password:27

@@ -1,0 +1,14 @@
+{
+  "id": "msg_example",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5",
+  "content": [
+    {
+      "type": "text",
+      "text": "[\n  {\n    \"title\": \"OrdersController exposes every order with no authorization or ownership check\",\n    \"file\": \"ExampleApp/Controllers/OrdersController.cs\",\n    \"startLine\": 18,\n    \"category\": \"security\",\n    \"severity\": \"CRITICAL\",\n    \"cwe\": [\"CWE-862\", \"CWE-639\"],\n    \"snippet\": \"public class OrdersController : ApiController\\n{\\n    [HttpGet]\\n    [Route(\\\"api/orders/{id}\\\")]\\n    public IHttpActionResult GetOrder(int id)\\n    {\\n        return Ok(_repo.Find(id));\\n    }\\n}\",\n    \"problem\": \"The controller declares no [Authorize] attribute and the action returns an object located purely by a client-supplied id, with no comparison against the caller's identity.\",\n    \"impact\": \"An unauthenticated caller can enumerate id values and read every order in the system, including other customers' data.\",\n    \"recommendation\": \"Register a global AuthorizeAttribute so the default is deny, then compare the resolved order's owner against a claim on the caller and return 403 on mismatch.\"\n  },\n  {\n    \"title\": \"Exception handler stores per-request header values in instance fields on a singleton\",\n    \"file\": \"ExampleApp/Services/GlobalExceptionHandler.cs\",\n    \"startLine\": 16,\n    \"category\": \"reliability\",\n    \"severity\": \"MEDIUM\",\n    \"cwe\": [\"CWE-488\"],\n    \"snippet\": \"private IEnumerable<string> listOfServiceCodes = new List<string>();\",\n    \"problem\": \"IExceptionHandler is resolved once for the application lifetime, so per-request values written to instance fields are shared across concurrent requests.\",\n    \"impact\": \"Under concurrent failures the audit trail attributes one request's service code to another request's exception, corrupting the forensic record.\",\n    \"recommendation\": \"Make the fields local variables inside the handler method; they are never used across calls.\"\n  }\n]"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "usage": { "input_tokens": 4211, "output_tokens": 612 }
+}

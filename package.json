@@ -1,0 +1,61 @@
+{
+  "name": "dotnet-codereview-framework",
+  "version": "2.0.0",
+  "description": "Evidence-first code review and security analysis framework for .NET. 279 concrete test cases, multi-tool orchestration (SonarQube, Snyk, Trivy, gitleaks, Semgrep, Dependency-Check, OSV-Scanner), optional AI-assisted review, correlation and dedup into one canonical finding set, projected to Markdown, JSON and SARIF.",
+  "keywords": [
+    "dotnet",
+    "aspnet",
+    "code-review",
+    "security",
+    "sast",
+    "sarif",
+    "sonarqube",
+    "snyk",
+    "trivy",
+    "gitleaks",
+    "semgrep",
+    "owasp",
+    "cwe",
+    "cvss"
+  ],
+  "license": "MIT",
+  "author": "Amr Kadry",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Amrkadry/dotnet-codereview-framework.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "moraa": "./bin/moraa.js"
+  },
+  "main": "./src/index.js",
+  "files": [
+    "bin/",
+    "src/",
+    "schema/",
+    "catalog/",
+    "rules/",
+    "docs/",
+    "ci/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node tools/selfcheck.js",
+    "test:adapters": "node tools/test-adapters.js",
+    "test:strict": "node tools/test-adapters.js --strict && node tools/audit-coverage.js --strict",
+    "audit:coverage": "node tools/audit-coverage.js",
+    "report": "node tools/project-findings.js reviews/example",
+    "docs": "node tools/generate-docs.js",
+    "tools": "node bin/moraa.js tools",
+    "selfcheck": "node tools/selfcheck.js",
+    "validate": "node tools/selfcheck.js",
+    "test:correlation": "node tools/test-correlation.js",
+    "review": "node bin/moraa.js review",
+    "discover": "node bin/moraa.js discover"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

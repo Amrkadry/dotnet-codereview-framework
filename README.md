@@ -4,15 +4,83 @@ An evidence-first code-review and security-analysis framework for .NET — built
 ASP.NET Framework (`packages.config`, non-SDK csproj, `Global.asax`, OWIN, EF6, `Web.config`, IIS)
 as much as for modern ASP.NET Core.
 
-Two things make it different from a checklist:
+Three things make it different from a checklist:
 
-1. **A catalog of 279 concrete .NET test cases**, organised A–Z, each with the signal to look for,
+1. **A runnable orchestrator.** `moraa review <path>` runs every available scanner, reconciles their
+   output into one finding set, and writes the review **into the source tree**.
+2. **A catalog of 279 concrete .NET test cases**, organised A–Z, each with the signal to look for,
    the pass condition, which stack it applies to, and whether a tool can decide it.
-2. **A canonical JSON model** where Markdown, JSON and SARIF are *generated* projections — so the
+3. **A canonical JSON model** where Markdown, JSON and SARIF are *generated* projections — so the
    executive summary, the security report and the CI feed cannot disagree with each other.
 
 Its governing rule: **no tool is authoritative, including the AI.** Every finding records the tools
 that found it *and* the tools that missed it.
+
+---
+
+## Quick start
+
+```bash
+# 1. Validate the framework and see which integrations this machine supports.
+#    Needs no scanner installed; prints install commands for anything missing.
+./scripts/validate.sh --fix          # Windows: .\scripts\validate.ps1 -Fix
+
+# 2. What does the project shape permit, before scanning anything?
+node bin/moraa.js discover /src/MyApp
+
+# 3. Review. Writes /src/MyApp/.moraa-review/
+node bin/moraa.js review /src/MyApp
+```
+
+Output lands **beside the code**, at `<sourcePath>/.moraa-review/`:
+
+```
+.moraa-review/
+  README.md                       map of content
+  00-Executive-Summary.md         overall risk + top priorities
+  01-Findings.md                  master table by severity
+  02-Tool-Results.md              what ran, what failed, what never looked
+  03-Dependencies-Security.md     confirmed advisories
+  04-Dependencies-Maintenance.md  outdated / EOL / duplicated
+  05-Test-Coverage.md             required tests per finding
+  06-Configuration.md
+  07-Correlation-and-Dedup.md     which tools agreed, which missed
+  08-Remediation-Roadmap.md       P0..P3
+  Findings/<ID> <title>.md        one page per finding
+  data/report.json                canonical source of truth
+  data/report.sarif               SARIF 2.1.0 for code scanning
+  data/raw/                       untouched tool output
+```
+
+### Integrations
+
+| Adapter | Kind | Notes |
+|---|---|---|
+| `trivy` | dependency | reads manifests, so it works on `packages.config` where `dotnet list package` cannot run |
+| `snyk` | dependency | needs auth; preserves the transitive `from` chain, which changes the fix |
+| `osv-scanner` | dependency | free, no auth |
+| `dependency-check` | dependency | SARIF, reads `packages.config` |
+| `gitleaks` | secret | **always** uses the .NET ruleset; refuses to fall back to stock rules |
+| `semgrep` | sast | runs the bundled `dotnet-moraa.yaml` |
+| `sonarqube` | quality | Web API, plus an **offline mode** that parses `.sonarqube/out/0/Issues.json` |
+| `ai-review` | ai | **optional, off by default** |
+
+Every adapter satisfies one contract and is verified by `node tools/test-adapters.js` **without the
+real tool installed**, by parsing a fixture. A status other than `EXECUTED` is structurally
+forbidden from carrying findings, which is what makes a false clean impossible to express.
+
+### AI review is optional
+
+It is **off by default** because enabling it transmits source code to a third-party API. Keys are
+read from the environment only — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ZAI_API_KEY` — never from
+config files and never from CLI arguments, since `argv` is visible in process listings. AI findings
+are capped at confidence `POSSIBLE`, receive no CVSS, and are marked `UNVERIFIED`. Everything else
+works fully without it.
+
+With **zero scanners installed** the pipeline still produces a report: discovery alone derived six
+findings on a synthetic legacy project, and every absent tool was reported as a capability gap.
+
+See [docs/34-orchestration.md](docs/34-orchestration.md).
 
 ---
 
@@ -275,12 +343,17 @@ Run both. Label both. Validate both.
 ```
 dotnet-codereview-framework/
 ├── README.md
+├── bin/moraa.js                        the orchestrator CLI
+├── scripts/validate.{ps1,sh}           validate install + report tool support
 ├── catalog/
 │   ├── dotnet-test-cases.json          178 cases, A-R (OWASP-aligned core)
 │   └── dotnet-test-cases-advanced.json 101 cases, S-Z (.NET platform specifics)
 ├── schema/finding.schema.json         canonical contract
 ├── tools/
 │   ├── project-findings.js            canonical -> md + json + sarif, with integrity gate
+│   ├── selfcheck.js                   12-gate whole-framework check
+│   ├── test-adapters.js               adapter contract harness (no tools needed)
+│   ├── test-correlation.js            proves multi-tool dedup
 │   ├── validate-crossrefs.js          catalog + finding-reference integrity
 │   ├── audit-coverage.js              probes the catalog and PRINTS THE GAPS
 │   ├── generate-docs.js               docs/01..33

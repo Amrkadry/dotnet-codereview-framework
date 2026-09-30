@@ -68,6 +68,72 @@ function locationOf(result) {
   };
 }
 
+/** Normalise a SARIF uri exactly the way locationOf does. */
+function uriToPath(uri) {
+  let f = uri || '';
+  try { f = decodeURIComponent(f); } catch { /* keep raw */ }
+  return f.replace(/^file:\/\/\/?/, '').replace(/\\/g, '/');
+}
+
+/**
+ * Extract a source -> sink path (taint dataflow) from result.codeFlows, if the tool supplied one.
+ *
+ * A dataflow path is the EVIDENCE that separates a taint-tracked finding from a pattern match:
+ * it names the source, the hops and the sink. Pure; never throws; returns undefined when the
+ * result carries no usable path, so callers can simply skip it.
+ *
+ * Among every codeFlows[].threadFlows[] the SHORTEST path is kept (fewest locations) — it is the
+ * clearest evidence. Ties keep the first, so two calls on the same input are byte-identical.
+ */
+function dataflowOf(result, engine) {
+  const codeFlows = (result && result.codeFlows) || [];
+  let best = null;       // locations of the shortest threadFlow seen so far
+  let pathCount = 0;     // total threadFlows seen across all codeFlows
+
+  for (const cf of codeFlows) {
+    for (const tf of (cf && cf.threadFlows) || []) {
+      pathCount++;
+      const locs = (tf && tf.locations) || [];
+      if (!locs.length) continue;
+      if (!best || locs.length < best.length) best = locs;
+    }
+  }
+  if (!best) return undefined;
+
+  const n = best.length;
+  let steps = best.map((l, i) => {
+    const loc = (l && l.location) || {};
+    const phys = loc.physicalLocation || {};
+    const art = phys.artifactLocation || {};
+    const region = phys.region || {};
+
+    // Build conditionally: a field absent from the SARIF stays absent, so JSON output is stable.
+    const step = {};
+    const file = uriToPath(art.uri);
+    if (file) step.file = file;
+    if (region.startLine) step.startLine = region.startLine;
+    if (region.endLine) step.endLine = region.endLine;
+    const msg = String(text(loc.message)).trim();
+    if (msg) step.message = msg;
+    const snip = String((region.snippet && (region.snippet.text || region.snippet.rendered)) || '').trim();
+    if (snip) step.snippet = snip;
+    step.role = n === 1 ? 'sink' : i === 0 ? 'source' : i === n - 1 ? 'sink' : 'step';
+    return step;
+  });
+
+  // Cap very long paths: keep the head and the tail. Never invent steps to fill the gap —
+  // say plainly how many were dropped instead.
+  if (steps.length > 40) {
+    const dropped = steps.length - 40;
+    steps = steps.slice(0, 20).concat(steps.slice(-20));
+    steps[19].message = (steps[19].message || '') + ` [... ${dropped} intermediate steps omitted ...]`;
+  }
+
+  const out = { engine, steps };
+  if (pathCount >= 1) out.pathCount = pathCount;
+  return out;
+}
+
 /** Snippet from the region, if the tool embedded one. */
 function snippetOf(result) {
   const phys = ((result.locations || [])[0] || {}).physicalLocation || {};
@@ -208,7 +274,7 @@ function fromSarif(sarif, opts = {}) {
         text(rule && rule.shortDescription) ||
         result.ruleId || 'Unnamed finding';
 
-      out.push({
+      const finding = {
         // No findingId yet: the correlation engine assigns canonical ids after dedup.
         title: title.slice(0, 200),
         category: categoryOf(toolKind, rule, result),
@@ -243,10 +309,15 @@ function fromSarif(sarif, opts = {}) {
           fingerprints: result.partialFingerprints || result.fingerprints || undefined,
           helpUri: (rule && rule.helpUri) || undefined
         }
-      });
+      };
+      // The source -> sink path, when the tool tracked one. Attached only when it exists so
+      // existing adapters' output stays byte-identical.
+      const df = dataflowOf(result, toolId);
+      if (df) finding.dataflow = df;
+      out.push(finding);
     }
   }
   return out;
 }
 
-module.exports = { fromSarif, severityFromCvss, LEVEL_TO_SEVERITY };
+module.exports = { fromSarif, dataflowOf, severityFromCvss, LEVEL_TO_SEVERITY };

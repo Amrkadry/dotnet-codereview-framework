@@ -4,14 +4,20 @@ An evidence-first code-review and security-analysis framework for .NET — built
 ASP.NET Framework (`packages.config`, non-SDK csproj, `Global.asax`, OWIN, EF6, `Web.config`, IIS)
 as much as for modern ASP.NET Core.
 
-Three things make it different from a checklist:
+Four things make it different from a checklist:
 
-1. **A runnable orchestrator.** `moraa review <path>` runs every available scanner, reconciles their
-   output into one finding set, and writes the review **into the source tree**.
-2. **A catalog of 279 concrete .NET test cases**, organised A–Z, each with the signal to look for,
+1. **A built-in engine that works alone.** `moraa native <path>` produces real findings with NO
+   scanner, NO AI and NO network — and every one of the 279 catalog cases applicable to your
+   project is either mechanically decided or surfaced as an explicit manual-review item. Nothing
+   is silently dropped.
+2. **A runnable orchestrator.** `moraa review <path>` runs every available scanner *plus* the
+   built-in sources (native engine, NuGet supply-chain, deployed-binary review), reconciles all of
+   it into one finding set, and writes the review **into the source tree**.
+3. **A catalog of 279 concrete .NET test cases**, organised A–Z, each with the signal to look for,
    the pass condition, which stack it applies to, and whether a tool can decide it.
-3. **A canonical JSON model** where Markdown, JSON and SARIF are *generated* projections — so the
-   executive summary, the security report and the CI feed cannot disagree with each other.
+4. **A canonical JSON model** where Markdown, JSON, SARIF and Excel are *generated* projections —
+   so the executive summary, the security report, the CI feed and the risk register cannot
+   disagree with each other.
 
 Its governing rule: **no tool is authoritative, including the AI.** Every finding records the tools
 that found it *and* the tools that missed it.
@@ -21,15 +27,19 @@ that found it *and* the tools that missed it.
 ## Quick start
 
 ```bash
-# 1. Validate the framework and see which integrations this machine supports.
-#    Needs no scanner installed; prints install commands for anything missing.
-./scripts/validate.sh --fix          # Windows: .\scripts\validate.ps1 -Fix
+# 1. Findings immediately — no scanner, no AI, no network needed.
+node bin/moraa.js native /src/MyApp
 
-# 2. What does the project shape permit, before scanning anything?
+# 2. What does the project shape permit, and what else could run here?
 node bin/moraa.js discover /src/MyApp
+node bin/moraa.js tools /src/MyApp
 
-# 3. Review. Writes /src/MyApp/.moraa-review/
+# 3. Full review: every available tool + all built-ins, merged and deduplicated.
+#    Writes /src/MyApp/.moraa-review/ (vault + JSON + SARIF + Markdown + Excel).
 node bin/moraa.js review /src/MyApp
+
+# 4. What's configured? (every secret redacted to its last 4 characters)
+node bin/moraa.js config
 ```
 
 Output lands **beside the code**, at `<sourcePath>/.moraa-review/`:
@@ -46,13 +56,26 @@ Output lands **beside the code**, at `<sourcePath>/.moraa-review/`:
   06-Configuration.md
   07-Correlation-and-Dedup.md     which tools agreed, which missed
   08-Remediation-Roadmap.md       P0..P3
-  Findings/<ID> <title>.md        one page per finding
+  Findings/<ID> <title>.md        one page per finding (AI-report enriches these, in place)
   data/report.json                canonical source of truth
   data/report.sarif               SARIF 2.1.0 for code scanning
+  data/report.md                  single-file Markdown with stable per-finding anchors
+  data/report.excel.xml           Excel workbook (SpreadsheetML 2003): Summary/Findings/Coverage
+  data/baseline.json              frozen baseline, after `moraa baseline create`
   data/raw/                       untouched tool output
 ```
 
-### Integrations
+### Sources
+
+**Built-in (always run in `review`; no external tool, no network):**
+
+| Source | Kind | Notes |
+|---|---|---|
+| `native` | sast | the framework's own engine: XML config + C# + manifest checks driven by the 279-case catalog; undecided cases become explicit manual-review items — see [docs/36](docs/36-native-engine.md) |
+| `supplychain` | dependency | NuGet supply-chain: dependency confusion, feed/credential misconfig, pinning, restore-time execution — see [docs/37](docs/37-supply-chain.md) |
+| `binary` | sast | deployed-assembly review (`bin/*.dll`): PE/ECMA-335 metadata, debug builds, binding redirects, redacted embedded secrets — see [docs/38](docs/38-binary-review.md) |
+
+**Adapters (external tools, verified against fixtures without the tool installed):**
 
 | Adapter | Kind | Notes |
 |---|---|---|
@@ -63,10 +86,11 @@ Output lands **beside the code**, at `<sourcePath>/.moraa-review/`:
 | `gitleaks` | secret | **always** uses the .NET ruleset; refuses to fall back to stock rules |
 | `semgrep` | sast | runs the bundled `dotnet-moraa.yaml` |
 | `sonarqube` | quality | Web API, plus an **offline mode** that parses `.sonarqube/out/0/Issues.json` |
-| `ai-review` | ai | **optional, off by default** |
+| `roslyn` | sast | .NET compiler-platform analysis when a build is possible |
+| `ai-review` | ai | **two opt-in modes, both off by default** — see below |
 
-Every adapter satisfies one contract and is verified by `node tools/test-adapters.js` **without the
-real tool installed**, by parsing a fixture. A status other than `EXECUTED` is structurally
+Every source satisfies one contract and is verified by the test suite **without the real tool
+installed**, by parsing a fixture. A status other than `EXECUTED` is structurally
 forbidden from carrying findings, which is what makes a false clean impossible to express.
 
 ### AI review is optional

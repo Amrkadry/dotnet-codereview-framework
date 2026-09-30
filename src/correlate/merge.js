@@ -23,21 +23,29 @@ const CONF_RANK = { CONFIRMED: 0, LIKELY: 1, POSSIBLE: 2, UNVERIFIED: 3 };
  * Key is a canonical concept; values are tool-native rule ids.
  */
 const RULE_EQUIVALENCE = [
-  { concept: 'hardcoded-credentials', rules: ['S2068', 'dotnet-appsetting-secret', 'dotnet-connectionstring-password', 'generic-api-key', 'CWE-798'] },
-  { concept: 'weak-cert-validation', rules: ['S4830', 'CA5359', 'moraa-dotnet-disable-cert-validation', 'CWE-295'] },
+  { concept: 'hardcoded-credentials', rules: ['S2068', 'dotnet-appsetting-secret', 'dotnet-connectionstring-password', 'generic-api-key', 'CWE-798', 'SCS0015', 'cs/hardcoded-credentials', 'cs/password-in-configuration'] },
+  { concept: 'weak-cert-validation', rules: ['S4830', 'CA5359', 'moraa-dotnet-disable-cert-validation', 'CWE-295', 'SCS0004'] },
   { concept: 'static-iv', rules: ['S3329', 'CA5401', 'moraa-dotnet-static-zero-iv', 'CWE-329'] },
   { concept: 'regex-no-timeout', rules: ['S6444', 'MORAA0013', 'moraa-dotnet-regex-no-timeout', 'CWE-1333'] },
   { concept: 'permissive-cors', rules: ['S5122', 'moraa-dotnet-cors-reflected-origin', 'CWE-346', 'CWE-942'] },
-  { concept: 'sql-injection', rules: ['S3649', 'CA2100', 'csharp.lang.security.sqli', 'CWE-89'] },
-  { concept: 'weak-hash', rules: ['S4790', 'CA5350', 'CA5351', 'CWE-327', 'CWE-328'] },
-  { concept: 'unsafe-deserialization', rules: ['S5766', 'CA2300', 'CA2301', 'CA2302', 'CWE-502'] },
-  { concept: 'xxe', rules: ['S2755', 'CA3075', 'CWE-611'] },
-  { concept: 'path-traversal', rules: ['S2083', 'CA3003', 'CWE-22'] },
-  { concept: 'weak-random', rules: ['S2245', 'CA5394', 'CWE-338'] },
+  { concept: 'sql-injection', rules: ['S3649', 'CA2100', 'csharp.lang.security.sqli', 'CWE-89', 'SCS0002', 'cs/sql-injection'] },
+  { concept: 'weak-hash', rules: ['S4790', 'CA5350', 'CA5351', 'CWE-327', 'CWE-328', 'SCS0006'] },
+  { concept: 'unsafe-deserialization', rules: ['S5766', 'CA2300', 'CA2301', 'CA2302', 'CWE-502', 'SCS0028', 'cs/unsafe-deserialization'] },
+  { concept: 'xxe', rules: ['S2755', 'CA3075', 'CWE-611', 'SCS0007'] },
+  { concept: 'path-traversal', rules: ['S2083', 'CA3003', 'CWE-22', 'SCS0018', 'cs/path-injection'] },
+  { concept: 'weak-random', rules: ['S2245', 'CA5394', 'CWE-338', 'SCS0005'] },
   { concept: 'cleartext-transmission', rules: ['S5332', 'CWE-319'] },
   { concept: 'shared-mutable-state', rules: ['S1450', 'MORAA0009', 'CWE-488'] },
   { concept: 'null-dereference', rules: ['S2259', 'CS8602', 'CWE-476'] },
-  { concept: 'missing-authorization', rules: ['MORAA0002', 'moraa-dotnet-controller-missing-authorize', 'CWE-862'] }
+  { concept: 'missing-authorization', rules: ['MORAA0002', 'moraa-dotnet-controller-missing-authorize', 'CWE-862'] },
+  { concept: 'command-injection', rules: ['SCS0001', 'cs/command-line-injection', 'CA3006', 'S2076', 'CWE-78'] },
+  { concept: 'xss', rules: ['SCS0029', 'cs/web/xss', 'CA3002', 'S5131', 'CWE-79'] },
+  { concept: 'code-injection', rules: ['cs/code-injection', 'CWE-94'] },
+  { concept: 'ldap-injection', rules: ['SCS0031', 'SCS0026', 'CA3005', 'S2078', 'CWE-90'] },
+  { concept: 'xpath-injection', rules: ['SCS0003', 'CA3008', 'CWE-643'] },
+  { concept: 'open-redirect', rules: ['SCS0027', 'CA3007', 'S5146', 'CWE-601'] },
+  { concept: 'csrf', rules: ['SCS0016', 'S4502', 'CWE-352'] },
+  { concept: 'weak-cipher', rules: ['SCS0010', 'SCS0013', 'CA5358', 'CWE-326'] }
 ];
 
 const CONCEPT_OF = new Map();
@@ -95,6 +103,14 @@ const best = (a, b, rank) => (rank[a] ?? 99) <= (rank[b] ?? 99) ? a : b;
 function mergeInto(a, b) {
   a.severity = best(a.severity, b.severity, SEV_RANK);
   a.confidence = best(a.confidence, b.confidence, CONF_RANK);
+
+  // A dataflow path is evidence; losing it on merge would silently discard the reason the
+  // finding is credible. Keep whichever side has one, and prefer the one with MORE steps when
+  // both do — the longer path documents the taint route in more detail.
+  if (b.dataflow && (!a.dataflow ||
+      (b.dataflow.steps || []).length > (a.dataflow.steps || []).length)) {
+    a.dataflow = b.dataflow;
+  }
 
   // Prefer a real CVSS vector over a bare score; prefer the higher score otherwise.
   if (b.cvss && (!a.cvss || (b.cvss.vector && !a.cvss.vector) ||
@@ -206,8 +222,9 @@ function correlate(findings, opts = {}) {
     if (c === 'hardcoded-credentials') return 'SEC-SECRET';
     if (c === 'missing-authorization') return 'SEC-AUTHZ';
     if (c === 'permissive-cors') return 'SEC-CORS';
-    if (['static-iv', 'weak-hash', 'weak-random', 'weak-cert-validation'].includes(c)) return 'SEC-CRYPTO';
-    if (['sql-injection', 'xxe', 'unsafe-deserialization'].includes(c)) return 'SEC-INJ';
+    if (['static-iv', 'weak-hash', 'weak-random', 'weak-cert-validation', 'weak-cipher'].includes(c)) return 'SEC-CRYPTO';
+    if (['sql-injection', 'xxe', 'unsafe-deserialization', 'command-injection', 'xss',
+         'code-injection', 'ldap-injection', 'xpath-injection'].includes(c)) return 'SEC-INJ';
     if (c === 'path-traversal') return 'SEC-FILE';
     return 'SEC-GEN';
   };

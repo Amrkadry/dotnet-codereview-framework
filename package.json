@@ -1,7 +1,7 @@
 {
   "name": "dotnet-codereview-framework",
   "version": "2.0.0",
-  "description": "Evidence-first code review and security analysis framework for .NET. 279 concrete test cases, multi-tool orchestration (SonarQube, Snyk, Trivy, gitleaks, Semgrep, Dependency-Check, OSV-Scanner), optional AI-assisted review, correlation and dedup into one canonical finding set, projected to Markdown, JSON and SARIF.",
+  "description": "Evidence-first code review and security analysis framework for .NET. 279 concrete test cases, multi-tool orchestration, a built-in native engine that finds issues with ZERO external tools, NuGet supply-chain and binary/assembly analysis, optional two-mode AI assist, correlation and dedup into one canonical finding set, projected to Markdown, JSON, SARIF and Excel.",
   "keywords": [
     "dotnet",
     "aspnet",
@@ -43,7 +43,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node tools/selfcheck.js",
+    "test": "node --test \"tests/**/*.test.js\" && node tools/selfcheck.js",
+    "test:unit": "node --test \"tests/**/*.test.js\"",
+    "test:diff": "node --test tests/diff.test.js",
     "test:adapters": "node tools/test-adapters.js",
     "test:strict": "node tools/test-adapters.js --strict && node tools/audit-coverage.js --strict",
     "audit:coverage": "node tools/audit-coverage.js",
@@ -54,7 +56,13 @@
     "validate": "node tools/selfcheck.js",
     "test:correlation": "node tools/test-correlation.js",
     "review": "node bin/moraa.js review",
-    "discover": "node bin/moraa.js discover"
+    "discover": "node bin/moraa.js discover",
+    "native": "node bin/moraa.js native",
+    "supplychain": "node bin/moraa.js supplychain",
+    "binary": "node bin/moraa.js binary",
+    "config": "node bin/moraa.js config",
+    "baseline": "node bin/moraa.js baseline",
+    "ai-report": "node bin/moraa.js review --ai-report"
   },
   "dependencies": {},
   "devDependencies": {}

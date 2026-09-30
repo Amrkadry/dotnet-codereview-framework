@@ -26,7 +26,7 @@ const C = require('../src/core/adapter-contract');
 const repoRoot = path.resolve(__dirname, '..');
 const adapterDir = path.join(repoRoot, 'src', 'adapters');
 const fixtureDir = path.join(repoRoot, 'fixtures');
-const only = process.argv[2];
+const only = process.argv.slice(2).find(a => !a.startsWith('--')); // flags like --strict are not adapter selectors
 
 if (!fs.existsSync(adapterDir)) {
   console.error('no src/adapters directory'); process.exit(2);

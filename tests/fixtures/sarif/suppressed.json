@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [{
+    "tool": { "driver": { "name": "gitleaks", "semanticVersion": "8.28.0", "rules": [
+      { "id": "dotnet-appsetting-secret", "properties": { "tags": ["CWE-798"] } }
+    ] } },
+    "results": [
+      { "ruleId": "dotnet-appsetting-secret", "level": "error",
+        "message": { "text": "Secret detected in SampleApp/Web.config" },
+        "suppressions": [{ "kind": "external", "status": "accepted",
+          "justification": "acknowledged by the security team" }],
+        "locations": [{ "physicalLocation": {
+          "artifactLocation": { "uri": "SampleApp/Web.config" },
+          "region": { "startLine": 4 } } }] }
+    ]
+  }]
+}

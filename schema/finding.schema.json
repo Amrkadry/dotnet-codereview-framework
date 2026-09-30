@@ -120,12 +120,38 @@
           "items": {
             "type": "object",
             "properties": {
-              "engine": { "type": "string", "enum": ["semgrep", "roslyn", "sonarqube", "gitleaks", "trivy", "dependency-check", "config-xml", "architecture", "custom"] },
+              "engine": { "type": "string", "enum": ["semgrep", "roslyn", "sonarqube", "gitleaks", "trivy", "dependency-check", "config-xml", "architecture", "codeql", "custom"] },
               "ruleId": { "type": "string" },
               "status": { "type": "string", "enum": ["EXISTS", "PROPOSED", "NOT_POSSIBLE"] }
             }
           }
         }
+      }
+    },
+    "dataflow": {
+      "type": "object",
+      "description": "Source -> sink path reported by a taint-tracking engine. The path IS the evidence: it is what makes a dataflow finding stronger than a pattern match.",
+      "additionalProperties": false,
+      "required": ["engine", "steps"],
+      "properties": {
+        "engine": { "type": "string", "description": "Engine that produced the path, e.g. codeql." },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "file": { "type": "string" },
+              "startLine": { "type": "integer", "minimum": 1 },
+              "endLine": { "type": "integer", "minimum": 1 },
+              "message": { "type": "string" },
+              "snippet": { "type": "string" },
+              "role": { "type": "string", "enum": ["source", "step", "sink"] }
+            }
+          }
+        },
+        "pathCount": { "type": "integer", "minimum": 1, "description": "How many distinct paths the engine reported for this result. Only the shortest is stored." }
       }
     },
     "sources": {

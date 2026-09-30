@@ -2,3 +2,7 @@ node_modules/
 *.log
 .tools/
 .canary/
+.moraa-tmp/
+moraa.config.json
+**/moraa.config.json
+.moraa-review/

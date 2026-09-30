@@ -8,7 +8,7 @@
       "reviewDate": "2026-01-01",
       "note": "SYNTHETIC DATA. These findings are illustrative and describe no real application. They exist so `node tools/project-findings.js reviews/example` runs end to end and so every schema feature has a worked example: a CVSS-scored finding, a deliberately N/A one, a severity/CVSS divergence, a conditional score, a tool false negative, a corrected finding, and an expiring suppression."
     },
-    "generatedAt": "2026-09-28",
+    "generatedAt": "2026-09-30",
     "totals": {
       "all": 6,
       "critical": 2,

@@ -149,3 +149,35 @@ jobs:
             reviews/*/report.json
             reviews/*/report.sarif
             gitleaks.sarif
+
+  # -------------------------------------------------------------- PR diff gate
+  # Gates a pull request ONLY on findings the PR introduced (merge-base semantics,
+  # base...HEAD): pre-existing debt does not block a PR here, the scheduled full `review`
+  # job above remains the safety net for exactly the cross-file taint this filter cannot
+  # see — a source introduced on a changed file whose sink sits in an unchanged file is
+  # only caught when the tool emitted that source as an additionalLocation (--diff-context).
+  # Runs on ubuntu with node only: no MSBuild, the adapters see the whole tree but the
+  # reported/gating set is restricted to the PR's changed files (--fail-on-new HIGH).
+  pr-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # REQUIRED: fetch-depth: 0. A shallow clone (depth: 1) has no merge base for
+          # base...HEAD, and `moraa review --diff` will fail instead of guessing.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Review only what the PR changed
+        run: node bin/moraa.js review . --diff "origin/${{ github.base_ref }}" --diff-context --fail-on-new HIGH
+
+      - name: Upload SARIF (PR diff findings)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: .moraa-review/data/report.sarif
+          category: moraa-pr

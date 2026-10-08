@@ -21,7 +21,7 @@ Three surfaces, all in `src/native/checks/`:
 
 ## The coverage contract — the part that keeps it honest
 
-The engine is driven by `catalog/dotnet-test-cases*.json` (279 cases). **Every catalog case
+The engine is driven by `catalog/dotnet-test-cases*.json` (304 cases). **Every catalog case
 applicable to the project's stack is accounted for in every run:**
 
 - decided by an implemented check → covered, with a finding when the check matched;

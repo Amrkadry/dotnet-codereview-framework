@@ -1,7 +1,7 @@
 {
   "name": "dotnet-codereview-framework",
   "version": "2.1.0",
-  "description": "Evidence-first code review and security analysis framework for .NET. 279 concrete test cases, multi-tool orchestration, a built-in native engine that finds issues with ZERO external tools, NuGet supply-chain and binary/assembly analysis, optional two-mode AI assist, correlation and dedup into one canonical finding set, projected to Markdown, JSON, SARIF and Excel.",
+  "description": "Evidence-first code review and security analysis framework for .NET. 304 concrete test cases, multi-tool orchestration, a built-in native engine that finds issues with ZERO external tools, NuGet supply-chain and binary/assembly analysis, optional two-mode AI assist, correlation and dedup into one canonical finding set, projected to Markdown, JSON, SARIF and Excel.",
   "keywords": [
     "dotnet",
     "aspnet",

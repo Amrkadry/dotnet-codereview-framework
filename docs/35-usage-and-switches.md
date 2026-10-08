@@ -116,7 +116,7 @@ ignore the gate.
 ### `native` — the built-in engine
 
 `moraa native <sourcePath>` runs the framework's own analyzer: XML-configuration checks, C#
-heuristics and manifest checks, driven by the 279-case .NET catalog. No scanner, no AI, no network.
+heuristics and manifest checks, driven by the 304-case .NET catalog. No scanner, no AI, no network.
 See [36 — The native engine](36-native-engine.md).
 
 Its honesty contract: every catalog case applicable to the project is either **decided by an

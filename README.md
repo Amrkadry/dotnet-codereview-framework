@@ -382,7 +382,7 @@ node tools/audit-coverage.js --strict   # fail CI on any gap
 ```
 
 ```
-test cases    : 279
+test cases    : 304
 categories    : 26
 probes        : 147
 covered       : 147

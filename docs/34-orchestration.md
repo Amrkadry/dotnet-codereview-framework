@@ -83,7 +83,7 @@ All of it, and it is. Verified state at the time of writing:
 |---|---|
 | adapter contract tests | 6 pass, 0 fail |
 | correlation | 4 raw → 2 canonical, merged 2, cross-tool equivalence works |
-| catalog coverage audit | 279 test cases, 0 known gaps |
+| catalog coverage audit | 304 test cases, 0 known gaps |
 | canonical projection | SARIF 2.1.0 |
 | CLI end-to-end on a synthetic project | 6 findings, vault + JSON + SARIF written |
 | secret scan of this repo | clean |

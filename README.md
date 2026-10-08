@@ -1,5 +1,7 @@
 # dotnet-codereview-framework
 
+![moraa — evidence-first .NET code review and security analysis](docs/assets/social-card.png)
+
 An evidence-first code-review and security-analysis framework for .NET — built for legacy
 ASP.NET Framework (`packages.config`, non-SDK csproj, `Global.asax`, OWIN, EF6, `Web.config`, IIS)
 as much as for modern ASP.NET Core.

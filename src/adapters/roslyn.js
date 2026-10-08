@@ -139,6 +139,78 @@ const RULES = {
   'CA2321', 'CA2322', 'CA2326', 'CA2327', 'CA2328', 'CA2329', 'CA2330']
   .forEach(id => { RULES[id] = { cwe: ['CWE-502'], severity: 'HIGH' }; });
 
+/**
+ * Locate the MSBuild that ships with Visual Studio.
+ *
+ * The dotnet SDK deliberately does NOT ship the web targets a legacy non-SDK ASP.NET project
+ * imports, so `dotnet build` cannot evaluate those projects at all. Visual Studio MSBuild can.
+ * This adapter already knew that and said so only in its remediation text, which left a
+ * perfectly buildable solution unanalysed on a machine that was able to analyse it.
+ */
+function findMsBuild() {
+  if (process.platform !== 'win32') return null;
+  const pf86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const vswhere = path.join(pf86, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
+  if (!fs.existsSync(vswhere)) return null;
+  try {
+    const out = execFileSync(vswhere, [
+      '-latest', '-products', '*',
+      '-requires', 'Microsoft.Component.MSBuild',
+      '-find', path.join('MSBuild', '**', 'Bin', 'MSBuild.exe')
+    ], { encoding: 'utf8', timeout: 60000 });
+    const first = String(out).split(/\r?\n/).map(x => x.trim()).filter(Boolean)[0];
+    return first && fs.existsSync(first) ? first : null;
+  } catch { return null; }
+}
+
+/**
+ * Drive Visual Studio MSBuild over the solution and collect the Roslyn SARIF it writes.
+ *
+ * The comma in csc's `ErrorLog=<path>,version=2.1` is the trap: MSBuild treats it as a property
+ * separator, so the version is dropped and csc quietly writes SARIF 1.0 — which this pipeline's
+ * 2.1 normaliser then reads as ZERO results. `%2C` is MSBuild's escape for a literal comma, and
+ * it is the whole difference between real diagnostics and a false clean. Verified on VS 2022.
+ */
+function runMsBuild(msbuild, solution, outPath) {
+  const sarif = path.join(outPath, 'raw', 'roslyn.msbuild.sarif');
+  fs.mkdirSync(path.dirname(sarif), { recursive: true });
+  try { fs.unlinkSync(sarif); } catch { /* first run */ }
+  const args = [
+    solution,
+    '/t:Rebuild',
+    '/p:Configuration=Debug',
+    '/p:ErrorLog=' + sarif + '%2Cversion=2.1',
+    '/v:quiet', '/nologo', '/m', '/clp:ErrorsOnly'
+  ];
+  const command = 'msbuild "' + solution + '" /p:ErrorLog=<out>%2Cversion=2.1 /t:Rebuild';
+  let exitCode = 0;
+  let stderr = '';
+  try {
+    execFileSync(msbuild, args, { encoding: 'utf8', timeout: 20 * 60 * 1000, stdio: 'pipe' });
+  } catch (e) {
+    exitCode = typeof e.status === 'number' ? e.status : 1;
+    stderr = String(e.stderr || e.stdout || e.message || '').trim().slice(0, 300);
+  }
+  return { sarif, command, exitCode, stderr, wrote: fs.existsSync(sarif) };
+}
+
+/**
+ * Make SARIF-reported absolute paths repo-relative, as every other source here does. An
+ * absolute path leaks the reviewing machine's layout into the report and cannot be resolved
+ * by a code-scanning UI against the repository root.
+ */
+function relativise(findings, sourcePath) {
+  const root = String(sourcePath || '').split('\\').join('/').replace(/\/+$/, '');
+  if (!root) return findings;
+  for (const f of findings) {
+    if (!f.location || !f.location.file) continue;
+    let t = String(f.location.file).split('\\').join('/');
+    if (t.toLowerCase().startsWith(root.toLowerCase() + '/')) t = t.slice(root.length + 1);
+    f.location.file = t;
+  }
+  return findings;
+}
+
 function detect(ctx) {
   try {
     const out = execFileSync('dotnet', ['--version'], { encoding: 'utf8', timeout: 60000 });
@@ -187,6 +259,52 @@ function run(ctx) {
     const named = projects.slice(0, 5)
       .map(p => `${p.name || p.file} — ${whyUnbuildable(p)}`)
       .join('; ') + (projects.length > 5 ? `; and ${projects.length - 5} more` : '');
+
+    // `dotnet build` is out, but Visual Studio MSBuild may still compile this. Returning
+    // NOT_APPLICABLE on a machine that can actually do the analysis is a coverage gap wearing
+    // the costume of a limitation.
+    const msbuild = findMsBuild();
+    const solution = (ctx.project && ctx.project.solution)
+      ? path.resolve(ctx.sourcePath, ctx.project.solution)
+      : null;
+    if (msbuild && solution && fs.existsSync(solution)) {
+      const b = runMsBuild(msbuild, solution, ctx.outPath);
+      if (b.wrote) {
+        let findings = [];
+        try {
+          const raw = fromSarif(fs.readFileSync(b.sarif, 'utf8'), { toolId: ID, toolKind: 'sast' });
+          findings = relativise((Array.isArray(raw) ? raw : []).map(post), ctx.sourcePath);
+        } catch (e) {
+          return C.failed(ID,
+            'MSBuild wrote a SARIF this adapter could not parse: ' + e.message,
+            { command: b.command, exitCode: b.exitCode, rawPath: b.sarif });
+        }
+        return {
+          status: 'EXECUTED', tool: ID, version: d.version + ' (via MSBuild)',
+          command: b.command, exitCode: b.exitCode,
+          durationMs: Date.now() - started, rawPath: b.sarif, findings,
+          notes: '`dotnet build` cannot evaluate this solution (' + named + '), so Visual Studio ' +
+            'MSBuild was used instead and reported ' + findings.length + ' diagnostic(s).',
+          limitations: 'These are the analyzers actually enabled for this build. If no analyzer ' +
+            'package is referenced, the diagnostics are compiler ones (CS*) rather than the ' +
+            'CA*/SCS* security rules — reference Microsoft.CodeAnalysis.NetAnalyzers or ' +
+            'SecurityCodeScan to obtain those.' +
+            (b.exitCode !== 0
+              ? ' The build exited ' + b.exitCode + ', so compilation was incomplete and the ' +
+                'analyzers saw only part of the code: ' + b.stderr
+              : '')
+        };
+      }
+      return {
+        status: 'NOT_APPLICABLE', tool: ID, version: d.version,
+        command: b.command, exitCode: b.exitCode, findings: [],
+        notes: 'No buildable project for `dotnet build` (' + named + '); Visual Studio MSBuild ' +
+          'was tried and produced no error log.',
+        limitations: 'This is NOT a clean result — no analyzer diagnostics were obtained. ' +
+          (b.stderr ? 'MSBuild reported: ' + b.stderr : '')
+      };
+    }
+
     return {
       status: 'NOT_APPLICABLE', tool: ID, version: d.version, command: '(not run)', findings: [],
       notes: `No buildable project: ${named}.`,

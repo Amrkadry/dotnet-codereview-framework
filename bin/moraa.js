@@ -329,13 +329,31 @@ async function cmdReview(sourcePath) {
   }
   const F = k => format.includes('all') || format.includes(k);
 
-  log(`\nmoraa review\n  source: ${sourcePath}\n  output: ${outPath}\n`);
+  const T_START = Date.now();
+    logRaw('');
+    for (const l of UI.banner(paint, {
+      title: 'moraa', subtitle: '.NET code review', version: pkgVersion(), stream: process.stdout
+    })) log(l);
+    logRaw('');
+    log(UI.kv(paint, 'source', sourcePath));
+    log(UI.kv(paint, 'output', outPath));
+    log(UI.kv(paint, 'platform', PLATFORM.describe().label + paint.dim('  ' + paint.glyphs.dot + '  ') + PLATFORM.describe().arch));
+    logRaw('');
 
   // ---- 1. discover
-  log(`[1/6] discovering project shape`);
-  const project = discover(sourcePath);
-  log(`      ${project.counts.projects} project(s), stack=${project.stack}, ` +
-    `tests=${project.flags.hasTests}, packages.config=${project.flags.anyPackagesConfig}`);
+  let tPhase = Date.now();
+    const project = discover(sourcePath);
+    log(UI.phase(paint, 1, 6, 'discovering project shape', Date.now() - tPhase, process.stdout));
+    {
+      const shape = [
+        paint.bold(String(project.counts.projects)) + paint.dim(' project(s)'),
+        paint.cyan(String(project.stack)),
+        project.flags.anyPackagesConfig ? paint.yellow('packages.config') : paint.dim('PackageReference'),
+        project.flags.hasTests ? paint.green('tests') : paint.yellow('no tests'),
+        project.flags.anyLockfile ? paint.green('lockfile') : paint.dim('no lockfile')
+      ].join(paint.dim('  ' + paint.glyphs.dot + '  '));
+      log(UI.detail(paint, shape));
+    }
   fs.mkdirSync(path.join(outPath, 'raw'), { recursive: true });
 
   const ctx = {
@@ -349,7 +367,8 @@ async function cmdReview(sourcePath) {
     .filter(a => !skip.includes(a.id))
     .filter(a => (config.tools[a.id] || {}).enabled !== false);
 
-  log(`[2/6] running ${adapters.length} external adapter(s)`);
+  tPhase = Date.now();
+    log(UI.phase(paint, 2, 6, `external adapters (${adapters.length})`, undefined, process.stdout));
   const runResults = [];
   for (const a of adapters) {
     let r;
@@ -367,13 +386,12 @@ async function cmdReview(sourcePath) {
     }
     r.kind = a.kind;
     runResults.push(r);
-    const n = (r.findings || []).length;
-    log(`      ${String(r.status).padEnd(14)} ${a.id.padEnd(18)} ${n} finding(s)` +
-      (r.status !== 'EXECUTED' ? `  — ${String(r.notes || '').slice(0, 80)}` : ''));
+    for (const l of UI.sourceRow(paint, r, process.stdout)) log(l);
   }
 
   // ---- 2b. built-in sources (native, supplychain, binary) — merged into the SAME pipeline
-  log(`[3/6] running built-in source(s)`);
+  tPhase = Date.now();
+    log(UI.phase(paint, 3, 6, 'built-in engines', undefined, process.stdout));
   const builtInResults = await runBuiltIns(sourcePath, outPath, project, config, { only, skip });
   for (const r of builtInResults) {
     const problems = C.validateRunResult(r, r.tool);
@@ -382,14 +400,13 @@ async function cmdReview(sourcePath) {
       continue; // a contract-invalid built-in result never enters the canonical set
     }
     runResults.push(r);
-    const n = (r.findings || []).length;
-    log(`      ${String(r.status).padEnd(14)} ${r.tool.padEnd(18)} ${n} finding(s)` +
-      (r.status !== 'EXECUTED' ? `  — ${String(r.notes || '').slice(0, 80)}` : ''));
+    for (const l of UI.sourceRow(paint, r, process.stdout)) log(l);
   }
   if (!builtInResults.length) log('      (none selected)');
 
   // ---- 3. gather + discovery findings
-  log('[4/6] normalising');
+  tPhase = Date.now();
+    log(UI.phase(paint, 4, 6, 'normalising', undefined, process.stdout));
   const raw = [];
   for (const r of runResults) for (const f of r.findings || []) raw.push(f);
   const dFindings = discoveryFindings(project);
@@ -403,7 +420,8 @@ async function cmdReview(sourcePath) {
   log(`      ${raw.length} raw finding(s) from ${runResults.length} source(s)`);
 
   // ---- 4. correlate
-  log('[5/6] correlating and deduplicating');
+  tPhase = Date.now();
+    log(UI.phase(paint, 5, 6, 'correlating and deduplicating', undefined, process.stdout));
   const toolsThatRan = runResults.filter(r => r.status === 'EXECUTED').map(r => r.tool);
   let { findings, stats } = correlate(raw, { toolsThatRan });
   log(`      ${stats.canonicalFindings} canonical (merged ${stats.mergedAway}), ` +
@@ -481,7 +499,8 @@ async function cmdReview(sourcePath) {
   }
 
   // ---- 5. project
-  log('[6/6] writing report');
+  tPhase = Date.now();
+    log(UI.phase(paint, 6, 6, 'writing report', undefined, process.stdout));
   let root = outPath, written = [];
   if (F('vault')) {
     const v = writeVault({ sourcePath, outDir, findings, runResults, stats, project });
@@ -615,25 +634,46 @@ async function cmdReview(sourcePath) {
 
   const filesWritten = (F('vault') ? written.length : 0) +
     (F('json') ? 1 : 0) + (F('sarif') ? 1 : 0) + (F('md') ? 1 : 0) + (F('excel') ? 1 : 0);
-  log(`\n  wrote ${filesWritten} file(s) to ${root}`);
-  if (F('vault')) log(`  start at ${path.join(outDir, 'README.md')}`);
-  if (excelPath) log(`  Excel: ${path.relative(sourcePath, excelPath).replace(/\\/g, '/')} (SpreadsheetML 2003 — opens in Excel/LibreOffice)`);
-
-  // severity line, coloured by severity when colour is on
-  // INFO is included so the severities add up to the findings total; omitting it made the
-  // line silently disagree with the count reported two lines earlier.
-  const sevCounts = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'].map(s =>
-    [s, findings.filter(f => f.severity === s).length]);
-  log('');
-  log('  ' + sevCounts.map(([s, n]) =>
-    (n ? paint.severity(`${s} ${n}`) : paint.dim(`${s} ${n}`))).join(paint.dim('  |  ')));
-  if (headline) { log(''); log(paint.bold(headline)); }
-
-  const notRun = runResults.filter(r => r.status !== 'EXECUTED');
-  if (notRun.length) {
-    log(`\n  ${notRun.length} source(s) did not run: ${notRun.map(r => r.tool).join(', ')}`);
-    log('  Findings absent from this report may simply never have been looked for.');
-  }
+  logRaw('');
+  
+    // ---- severity chart
+    const sevCounts = {};
+    for (const sv of UI.SEV_ORDER) sevCounts[sv] = findings.filter(f => f.severity === sv).length;
+    for (const l of UI.severityChart(paint, sevCounts, process.stdout)) log(l);
+  
+    // ---- the findings worth opening first
+    const worst = findings.filter(f => f.severity !== 'INFO');
+    if (worst.length) {
+      logRaw('');
+      log(UI.rule(paint, UI.termWidth(process.stdout), 'highest severity first'));
+      logRaw('');
+      for (const l of UI.topFindings(paint, worst, { limit: 10, stream: process.stdout })) log(l);
+    }
+  
+    // ---- what was written
+    logRaw('');
+    log(UI.rule(paint, UI.termWidth(process.stdout), 'output'));
+    logRaw('');
+    log(UI.kv(paint, 'files', paint.bold(String(filesWritten)) + paint.dim(' written to ') + root, 10));
+    if (F('vault')) log(UI.kv(paint, 'start at', paint.cyan(path.join(outDir, 'README.md')), 10));
+    if (manualReview.length) {
+      log(UI.kv(paint, 'coverage', paint.bold(String(findings.length)) + paint.dim(' actionable') +
+        paint.dim('  ' + paint.glyphs.dot + '  ') + paint.bold(String(manualReview.length)) +
+        paint.dim(' undecided (Manual-Review-Queue.md)'), 10));
+    }
+    if (excelPath) log(UI.kv(paint, 'excel', paint.cyan(path.relative(sourcePath, excelPath).replace(/\\/g, '/')), 10));
+    log(UI.kv(paint, 'elapsed', paint.cyan(UI.duration(Date.now() - T_START)), 10));
+    if (headline) { logRaw(''); log(paint.bold(headline)); }
+  
+    // ---- coverage honesty: a tool that never ran is not a clean result
+    const notRun = runResults.filter(r => r.status !== 'EXECUTED');
+    if (notRun.length) {
+      logRaw('');
+      log('  ' + paint.yellow(paint.glyphs.warn + ' ') +
+        paint.yellow(`${notRun.length} source(s) did not run: `) + paint.dim(notRun.map(r => r.tool).join(', ')));
+      log('  ' + paint.dim('Findings absent from this report may simply never have been looked for.'));
+    }
+    logRaw('');
 
   // ---- 6. AI mode "report": post-process the ALREADY-written markdown, in place
   const aiFlagVal = flag('ai-report', false);
@@ -762,6 +802,13 @@ function cmdInstall(names, doIt) {
   log("  " + (results.length - failed.length) + " of " + results.length + " installed. " +
     "Run: moraa tools <path>   to confirm the pipeline now sees them.");
   if (failed.length) process.exitCode = 1;
+}
+
+/** Version from package.json, for the banner. Never fatal: the banner is decoration. */
+function pkgVersion() {
+  try {
+    return 'v' + require(path.join(repoRoot, 'package.json')).version;
+  } catch { return ''; }
 }
 
 function toSarif(findings) {

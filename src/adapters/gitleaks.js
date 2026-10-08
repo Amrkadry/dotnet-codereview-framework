@@ -99,6 +99,20 @@ function parse(raw, ctx) {
   try { found = fromSarif(raw, { toolId: ID, toolKind: 'secret' }); } catch { return []; }
   if (!Array.isArray(found)) return [];
 
+  // gitleaks is handed an ABSOLUTE scan root, so every path it reports back is absolute.
+  // Left alone that leaks the reviewing machine's directory layout into the report, the
+  // SARIF and the Excel, and it breaks every consumer that resolves a location against the
+  // repository root -- a GitHub code-scanning annotation cannot attach to "D:/...". Every
+  // other source in this pipeline emits repo-relative, forward-slash paths; so does this one now.
+  const root = (ctx && ctx.sourcePath) ? String(ctx.sourcePath) : null;
+  const relPath = file => {
+    let t = String(file || '').split(String.fromCharCode(92)).join('/');
+    if (!root) return t;
+    const r = root.split(String.fromCharCode(92)).join('/').replace(/\/+$/, '');
+    if (t.toLowerCase().startsWith(r.toLowerCase() + '/')) t = t.slice(r.length + 1);
+    return t.replace(/^\.\//, '');
+  };
+
   return found.map(f => {
     const rule = f.subcategory || '';
     // Commented-out credentials are a distinct and often worse case: they are frequently the
@@ -106,7 +120,19 @@ function parse(raw, ctx) {
     const isCommented = /commented/i.test(rule);
     const isWeakKey = /weak-static-key/i.test(rule);
 
+    // The SARIF message gitleaks emits reads "<rule> has detected secret for file <abs path>",
+    // which puts a machine string and a local path where a human-readable title belongs. The
+    // location already carries the file, so the title states the FINDING instead.
+    const where = relPath(f.location && f.location.file);
+    const kind = isCommented
+      ? 'Credential left in a comment'
+      : isWeakKey
+        ? 'Hard-coded cryptographic key literal'
+        : 'Secret-shaped literal in source or configuration';
+
     return Object.assign(f, {
+      title: `${kind} (${rule || 'gitleaks'})`,
+      location: Object.assign({}, f.location, { file: where }),
       category: 'security',
       severity: 'HIGH',
       confidence: 'LIKELY',

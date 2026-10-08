@@ -66,6 +66,109 @@ Output lands **beside the code**, at `<sourcePath>/.moraa-review/`:
   data/raw/                       untouched tool output
 ```
 
+### What a run looks like
+
+The subject below is called **`redacted-source-code`** on purpose: every path, project and
+finding in it is synthetic, so the sample can show a full, busy report without disclosing
+anything about any real codebase. It is rendered by the same code that prints a real run, so
+the frames and bar scaling cannot drift from the tool.
+
+On a terminal this is coloured — severities carry their own colour, bars are tinted to match,
+tool rows are green/yellow/red by outcome. Through a pipe it degrades to exactly what you see
+here: plain ASCII, **zero ANSI escape bytes**, so CI logs and `grep` stay clean.
+
+```text
+
+  ╭────────────────────────────────────────────────────────────────────────────────────────╮
+  │ moraa  ·  .NET code review                                                      v2.1.0 │
+  ╰────────────────────────────────────────────────────────────────────────────────────────╯
+
+  source    C:\src\redacted-source-code
+  output    C:\src\redacted-source-code\.moraa-review
+  platform  Windows  ·  x64
+
+  [1/6] discovering project shape ................................................... 7ms
+        └ 4 project(s)  ·  framework  ·  packages.config  ·  no tests  ·  no lockfile
+  [2/6] external adapters (8) ...........................................................
+  ○ ai-review           not run           
+      AI review mode "review" is OFF — it is opt-in and nothing AI-related ran.
+  ✔ gitleaks            6 findings        14.2s
+  ✔ osv                 9 findings        980ms
+  ✔ roslyn              37 findings       41.5s
+  ✔ semgrep             23 findings       26.7s
+  ✔ snyk                14 findings       8.3s
+  ○ sonarqube           not run           
+      No SonarQube projectKey configured and no previous analyser output on disk.
+  ✔ trivy               11 findings       5.1s
+  [3/6] built-in engines ................................................................
+  ✔ native              612 findings      3.4s
+  ✔ supplychain         28 findings       410ms
+  ✔ binary              5 findings        6.9s
+  [4/6] normalising .....................................................................
+      745 raw finding(s) from 12 source(s)
+  [5/6] correlating and deduplicating ...................................................
+      588 canonical (merged 157), 34 confirmed by >1 tool
+      371 actionable finding(s); 217 catalog case(s) not mechanically decided (manual-review queue)
+      consolidated to 63 rule families (folded 308 repeat locations)
+  [6/6] writing report ..................................................................
+
+  ╭─ findings by severity ─────────────────────────────────────────────────────────────────╮
+  │ CRITICAL      7  ██████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░        │
+  │ HIGH         19  █████████████████████████████████████████████████░░░░░░░░░░░░░        │
+  │ MEDIUM       24  ██████████████████████████████████████████████████████████████        │
+  │ LOW           9  ███████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░        │
+  │ INFO          4  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░        │
+  ╰────────────────────────────────────────────────────────────────────────────────────────╯
+
+  ── highest severity first ────────────────────────────────────────────────────────────────
+
+  CRITICAL   Hardcoded credential literal: password
+             → src/DataAccess/<redacted>.cs:1412
+  CRITICAL   SQL injection via string concatenation
+             → src/DataAccess/<redacted>Repository.cs:268  (+11 more locations)
+  CRITICAL   TLS certificate validation disabled process-wide
+             → src/Services/<redacted>Client.cs:54  (+2 more locations)
+  CRITICAL   <redacted>Controller exposes 6 state-changing endpoint(s) with no authoriz…
+             → src/Controllers/<redacted>Controller.cs:37  (+22 more locations)
+  CRITICAL   Insecure deserialization of untrusted input (BinaryFormatter)
+             → src/Messaging/<redacted>.cs:96
+  HIGH       Hard-coded cryptographic key literal (dotnet-weak-static-key)
+             → src/Auth/<redacted>Provider.cs:41
+  HIGH       Restored package packages/<redacted>.6.5.1 ships MSBuild logic that EXECUT…
+             → packages/<redacted>.6.5.1/build/<redacted>.targets:24
+  HIGH       Reflected cross-site scripting in a Razor view
+             → src/Views/<redacted>/Index.cshtml:73  (+4 more locations)
+  HIGH       Server-side request forgery via user-supplied URL
+             → src/Services/<redacted>Fetcher.cs:128
+  HIGH       PBKDF2 run for only 100 iterations
+             → src/Security/<redacted>Hasher.cs:62
+
+  2 further finding(s) in the report
+
+  ── output ────────────────────────────────────────────────────────────────────────────────
+
+  files      78 written to C:\src\redacted-source-code\.moraa-review
+  start at   .moraa-review\README.md
+  coverage   63 actionable  ·  217 undecided (Manual-Review-Queue.md)
+  excel      .moraa-review/data/report.excel.xml
+  elapsed    1m52s
+
+  ⚠ 2 source(s) did not run: ai-review, sonarqube
+  Findings absent from this report may simply never have been looked for.
+```
+
+Reading it:
+
+- **Tool rows** say what each source *did*. `✔` ran, `○` did not. A row that did not run
+  carries the reason, because a tool reporting nothing because it never started is not a
+  clean result — and the footer repeats which sources were absent for the same reason.
+- **The severity chart** keeps empty severities visible and dimmed rather than dropping them,
+  so a genuinely clean run cannot be mistaken for a partial one.
+- **`(+22 more locations)`** means the rule fired in 23 places and was consolidated into one
+  finding family; the other locations are all in the report, not discarded.
+- **`coverage`** separates what was decided from what was not. The undecided cases are
+  questions in `Manual-Review-Queue.md`, never counted as findings.
+
 ### Windows, WSL and Linux
 
 The framework runs natively on all three, and accepts a source path in whichever shell

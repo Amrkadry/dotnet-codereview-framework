@@ -237,9 +237,11 @@ function sourceRow(paint, r, stream) {
   const count = ran
     ? (n ? paint.bold(String(n)) + paint.dim(n === 1 ? ' finding' : ' findings') : paint.green('clean'))
     : paint.dim('not run');
+  // A tool that never ran has no meaningful duration; printing "0ms" next to "not run"
+  // invites the reader to think it ran and finished instantly.
   const lines = ['  ' + statusGlyph(paint, r.status) + ' ' +
     padVisible(paint.white(r.tool), 20) + padVisible(count, 18) +
-    paint.dim(duration(r.durationMs))];
+    paint.dim(ran ? duration(r.durationMs) : '')];
   if (!ran && r.notes) {
     const room = Math.max(24, width - 10);
     lines.push('      ' + paint.dim(String(r.notes).replace(/\s+/g, ' ').slice(0, room)));
@@ -281,6 +283,26 @@ function severityChart(paint, counts, stream, title = 'findings by severity') {
 }
 
 /**
+ * Shorten text on the RIGHT, with an ellipsis, so a cut is visible rather than silent.
+ * A title that just stops mid-word reads like the data itself is truncated.
+ */
+function truncText(s, max) {
+  const t = String(s);
+  if (max <= 1) return t.slice(0, Math.max(0, max));
+  return t.length <= max ? t : t.slice(0, max - 1).trimEnd() + '\u2026';
+}
+
+/**
+ * Shorten a path on the LEFT. The informative end of a path is the file name and line,
+ * never the directory prefix, so dropping the head keeps what a reader needs to navigate.
+ */
+function truncPath(s, max) {
+  const t = String(s);
+  if (t.length <= max || max <= 2) return t.length <= max ? t : t.slice(t.length - max);
+  return '\u2026' + t.slice(t.length - (max - 1));
+}
+
+/**
  * The findings worth reading first: most severe first, with location and how many other
  * places the same rule fired, so a consolidated family does not look like a single hit.
  */
@@ -296,13 +318,18 @@ function topFindings(paint, findings, opts = {}) {
   const lines = [];
   for (const f of shown) {
     const extra = ((f.location && f.location.additionalLocations) || []).length;
-    const titleRoom = Math.max(20, width - 20);
+    // 13 columns of indent + severity badge sit to the left of the title.
+    const titleRoom = Math.max(20, width - 15);
     lines.push('  ' + padVisible(paint.severity(f.severity), 10) + ' ' +
-      paint.white(String(f.title || '').slice(0, titleRoom)));
+      paint.white(truncText(f.title || '', titleRoom)));
     const loc = f.location || {};
     const where = (loc.file || '(project)') + (loc.startLine ? ':' + loc.startLine : '');
-    lines.push('             ' + paint.dim(g.arrow + ' ' + where) +
-      (extra ? paint.dim(`  (+${extra} more location${extra === 1 ? '' : 's'})`) : ''));
+    const extraNote = extra
+      ? `  (+${extra} more location${extra === 1 ? '' : 's'})`
+      : '';
+    const locRoom = Math.max(20, width - 17 - extraNote.length);
+    lines.push('             ' + paint.dim(g.arrow + ' ' + truncPath(where, locRoom)) +
+      (extraNote ? paint.dim(extraNote) : ''));
   }
   if (ranked.length > shown.length) {
     lines.push('');
@@ -346,5 +373,6 @@ module.exports = {
   colorEnabled, paintFor, progressLine, summaryTable, SEV_ORDER, ESC,
   // layout primitives
   termWidth, visibleLength, padVisible, rule, box, banner, kv, duration,
-  phase, detail, statusGlyph, sourceRow, severityChart, topFindings, glyphsFor
+  phase, detail, statusGlyph, sourceRow, severityChart, topFindings, glyphsFor,
+  truncText, truncPath
 };

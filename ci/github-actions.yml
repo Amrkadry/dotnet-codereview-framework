@@ -1,0 +1,183 @@
+# dotnet-moraa-codereviewer — reference CI pipeline for legacy ASP.NET Framework.
+#
+# Gate order is deliberate: cheapest and most certain first.
+#   build -> analyzers -> tests -> secrets -> dependencies -> projection
+#
+# Adoption note: on a legacy codebase, start the analyzer and dependency gates as
+# `continue-on-error: true` and tighten them once the baseline is clean. The secret gate
+# should block from day one — it has no legacy-noise problem.
+
+name: moraa-review
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  schedule:
+    - cron: '0 3 * * 1'   # weekly: advisories appear without code changing
+
+permissions:
+  contents: read
+  security-events: write   # required to upload SARIF
+
+env:
+  SOLUTION: YourApp.sln
+  CONFIGURATION: Release
+
+jobs:
+  review:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so secret scanning can see past commits
+
+      # ---------------------------------------------------------------- build
+      - uses: microsoft/setup-msbuild@v2
+      - uses: nuget/setup-nuget@v2
+
+      - name: Restore (packages.config needs nuget.exe, not dotnet restore)
+        run: nuget restore ${{ env.SOLUTION }}
+
+      # GATE 1 — build. Nothing downstream is meaningful on a broken build.
+      - name: Build
+        run: msbuild ${{ env.SOLUTION }} /t:Rebuild /p:Configuration=${{ env.CONFIGURATION }} /v:minimal
+
+      # GATE 2 — analyzers. Several findings in the reference review map to analyzers
+      # that ship with the SDK but were simply never switched on (CFG-BUILD-001):
+      #   CA5359 -> disabled certificate validation
+      #   CA1305 -> missing IFormatProvider (culture-dependent money formatting)
+      #   CA5401 -> symmetric encryption without a random IV
+      - name: Verify analyzers are enabled
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'Directory.Build.props')) {
+            Write-Error 'Directory.Build.props missing: analyzers are not enforced (CFG-BUILD-001).'
+          }
+
+      # GATE 3 — tests. Must distinguish "passed" from "none exist" (TEST-COV-001).
+      - name: Test
+        shell: pwsh
+        run: |
+          $testProjects = Get-ChildItem -Recurse -Filter '*.Tests.csproj'
+          if ($testProjects.Count -eq 0) {
+            Write-Error 'No test project found. See TEST-COV-001.'
+          }
+          foreach ($p in $testProjects) {
+            dotnet test $p.FullName --collect:"XPlat Code Coverage" --logger trx
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      # ------------------------------------------------------------- secrets
+      # GATE 4 — secrets. MUST use the .NET ruleset. Stock gitleaks rules returned
+      # "no leaks found" on 49.18 MB of a repo holding four live credential sets;
+      # the .NET ruleset found 17. This gate blocks from day one.
+      - name: Install gitleaks
+        shell: pwsh
+        run: |
+          $v = '8.28.0'
+          Invoke-WebRequest -Uri "https://github.com/gitleaks/gitleaks/releases/download/v$v/gitleaks_${v}_windows_x64.zip" -OutFile gl.zip
+          Expand-Archive gl.zip -DestinationPath .tools -Force
+
+      - name: Secret scan (.NET ruleset)
+        run: >
+          .tools\gitleaks.exe dir .
+          --config rules/gitleaks/dotnet-config.toml
+          --redact
+          --report-format sarif
+          --report-path gitleaks.sarif
+          --exit-code 1
+
+      - name: Secret-scan canary (proves the gate is actually looking)
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .canary | Out-Null
+          '<add key="CanaryPassword" value="Str0ng!Canary#1" />' | Set-Content .canary/Web.config
+          .tools\gitleaks.exe dir .canary --config rules/gitleaks/dotnet-config.toml --redact --exit-code 1
+          if ($LASTEXITCODE -eq 0) { Write-Error 'Canary NOT detected: the secret gate is not working.' }
+          Remove-Item -Recurse -Force .canary
+
+      # -------------------------------------------------------- dependencies
+      # GATE 5 — dependencies. `dotnet list package --vulnerable` CANNOT run on a
+      # non-SDK web project (DEP-AUDIT-001), so use a manifest-reading scanner.
+      - name: Dependency scan (reads packages.config)
+        uses: dependency-check/Dependency-Check_Action@main
+        continue-on-error: true   # tighten once the baseline is triaged
+        with:
+          project: YourApp
+          path: '.'
+          format: 'SARIF'
+          args: --failOnCVSS 7 --enableExperimental
+
+      # ------------------------------------------------------------ projection
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Project canonical findings -> md + json + sarif
+        run: node tools/project-findings.js reviews/example
+
+      - name: Assert reports are generated, not hand-edited
+        shell: pwsh
+        run: |
+          git diff --exit-code reports/ reviews/*/report.json reviews/*/report.sarif
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error 'Generated reports differ from canonical projection: someone edited a report by hand.'
+          }
+
+      # ------------------------------------------------------------ surfacing
+      - name: Upload SARIF (secrets)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: moraa-secrets
+
+      - name: Upload SARIF (canonical findings)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reviews/example/report.sarif
+          category: moraa-review
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moraa-review-reports
+          path: |
+            reports/
+            reviews/*/report.json
+            reviews/*/report.sarif
+            gitleaks.sarif
+
+  # -------------------------------------------------------------- PR diff gate
+  # Gates a pull request ONLY on findings the PR introduced (merge-base semantics,
+  # base...HEAD): pre-existing debt does not block a PR here, the scheduled full `review`
+  # job above remains the safety net for exactly the cross-file taint this filter cannot
+  # see — a source introduced on a changed file whose sink sits in an unchanged file is
+  # only caught when the tool emitted that source as an additionalLocation (--diff-context).
+  # Runs on ubuntu with node only: no MSBuild, the adapters see the whole tree but the
+  # reported/gating set is restricted to the PR's changed files (--fail-on-new HIGH).
+  pr-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # REQUIRED: fetch-depth: 0. A shallow clone (depth: 1) has no merge base for
+          # base...HEAD, and `moraa review --diff` will fail instead of guessing.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Review only what the PR changed
+        run: node bin/moraa.js review . --diff "origin/${{ github.base_ref }}" --diff-context --fail-on-new HIGH
+
+      - name: Upload SARIF (PR diff findings)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: .moraa-review/data/report.sarif
+          category: moraa-pr

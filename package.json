@@ -1,0 +1,69 @@
+{
+  "name": "dotnet-codereview-framework",
+  "version": "2.1.0",
+  "description": "Evidence-first code review and security analysis framework for .NET. 279 concrete test cases, multi-tool orchestration, a built-in native engine that finds issues with ZERO external tools, NuGet supply-chain and binary/assembly analysis, optional two-mode AI assist, correlation and dedup into one canonical finding set, projected to Markdown, JSON, SARIF and Excel.",
+  "keywords": [
+    "dotnet",
+    "aspnet",
+    "code-review",
+    "security",
+    "sast",
+    "sarif",
+    "sonarqube",
+    "snyk",
+    "trivy",
+    "gitleaks",
+    "semgrep",
+    "owasp",
+    "cwe",
+    "cvss"
+  ],
+  "license": "MIT",
+  "author": "Amr Kadry",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Amrkadry/dotnet-codereview-framework.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "moraa": "./bin/moraa.js"
+  },
+  "main": "./src/index.js",
+  "files": [
+    "bin/",
+    "src/",
+    "schema/",
+    "catalog/",
+    "rules/",
+    "docs/",
+    "ci/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\" && node tools/selfcheck.js",
+    "test:unit": "node --test \"tests/**/*.test.js\"",
+    "test:diff": "node --test tests/diff.test.js",
+    "test:adapters": "node tools/test-adapters.js",
+    "test:strict": "node tools/test-adapters.js --strict && node tools/audit-coverage.js --strict",
+    "audit:coverage": "node tools/audit-coverage.js",
+    "report": "node tools/project-findings.js reviews/example",
+    "docs": "node tools/generate-docs.js",
+    "tools": "node bin/moraa.js tools",
+    "selfcheck": "node tools/selfcheck.js",
+    "validate": "node tools/selfcheck.js",
+    "test:correlation": "node tools/test-correlation.js",
+    "review": "node bin/moraa.js review",
+    "discover": "node bin/moraa.js discover",
+    "native": "node bin/moraa.js native",
+    "supplychain": "node bin/moraa.js supplychain",
+    "binary": "node bin/moraa.js binary",
+    "config": "node bin/moraa.js config",
+    "baseline": "node bin/moraa.js baseline",
+    "ai-report": "node bin/moraa.js review --ai-report"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

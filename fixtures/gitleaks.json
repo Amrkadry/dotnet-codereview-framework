@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [{
+    "tool": { "driver": { "name": "gitleaks", "semanticVersion": "8.28.0", "informationUri": "https://github.com/gitleaks/gitleaks", "rules": [
+      { "id": "dotnet-appsetting-secret", "name": "dotnet-appsetting-secret",
+        "shortDescription": { "text": "Secret-bearing appSetting in a .NET config file" },
+        "properties": { "tags": ["dotnet", "appsettings", "CWE-798"] } },
+      { "id": "dotnet-connectionstring-password", "name": "dotnet-connectionstring-password",
+        "shortDescription": { "text": "ADO.NET connection string with inline password" },
+        "properties": { "tags": ["dotnet", "connectionstring", "CWE-798"] } },
+      { "id": "dotnet-commented-credential", "name": "dotnet-commented-credential",
+        "shortDescription": { "text": "Credential inside an XML comment" },
+        "properties": { "tags": ["dotnet", "commented", "CWE-540"] } }
+    ] } },
+    "results": [
+      { "ruleId": "dotnet-appsetting-secret", "level": "error",
+        "message": { "text": "dotnet-appsetting-secret has detected a secret in SampleApp/Web.config" },
+        "locations": [{ "physicalLocation": {
+          "artifactLocation": { "uri": "SampleApp/Web.config" },
+          "region": { "startLine": 4, "snippet": { "text": "<add key=\"AdminPassword\" value=\"REDACTED\" />" } } } }],
+        "partialFingerprints": { "commitSha": "", "secret": "REDACTED" } },
+      { "ruleId": "dotnet-connectionstring-password", "level": "error",
+        "message": { "text": "dotnet-connectionstring-password has detected a secret in SampleApp/Web.config" },
+        "locations": [{ "physicalLocation": {
+          "artifactLocation": { "uri": "SampleApp/Web.config" },
+          "region": { "startLine": 7, "snippet": { "text": "password=REDACTED" } } } }] },
+      { "ruleId": "dotnet-commented-credential", "level": "error",
+        "message": { "text": "dotnet-commented-credential has detected a secret in SampleApp/Web.config" },
+        "locations": [{ "physicalLocation": {
+          "artifactLocation": { "uri": "SampleApp/Web.config" },
+          "region": { "startLine": 12, "snippet": { "text": "<!--<add key=\"ProdPassword\" value=\"REDACTED\" />-->" } } } }] }
+    ]
+  }]
+}

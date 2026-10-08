@@ -1,0 +1,34 @@
+# dotnet-codereview-framework — acknowledged self-scan findings.
+#
+# This repository's own secret scan reports these three matches. All three are the
+# INTENTIONAL canary literal used to prove the CI secret gate is actually looking
+# (see ci/github-actions.yml and docs/26-gitleaks.md). The canary must remain
+# detectable by the ruleset — that is its entire purpose — so the rule is NOT
+# weakened for consumers. Instead each occurrence is fingerprinted here, with a
+# reason, exactly as docs/31-false-positives.md prescribes.
+#
+# No real credential exists in this repository. Verified: stock gitleaks reports
+# zero findings, and the .NET ruleset's only hits are the three below.
+#
+# Reviewed: 2026-09-28. Re-verify if the canary value or its location changes.
+
+# The canary example shown in the gitleaks documentation page.
+docs/26-gitleaks.md:dotnet-appsetting-secret:17
+
+# The canary written and scanned by the CI pipeline's own self-test step.
+ci/github-actions.yml:dotnet-appsetting-secret:95
+
+# The same canary text inside the docs generator that emits docs/26-gitleaks.md.
+tools/generate-docs.js:dotnet-appsetting-secret:326
+
+# ---------------------------------------------------------------------------
+# Adapter test fixtures (added 2026-09-28).
+# fixtures/*.json are SYNTHETIC tool outputs used by tools/test-adapters.js to prove each
+# parser reads real tool schemas without the tool installed. They necessarily contain
+# secret-SHAPED strings (all literally "REDACTED") so the secret-parsing paths are exercised.
+# No real credential exists in any fixture. Verified: every value is the literal REDACTED.
+# These are fingerprinted rather than the rules being weakened, per docs/31-false-positives.md.
+fixtures/gitleaks.json:dotnet-connectionstring-password:27
+# Synthetic connection string in the native-engine test fixture: the test exists precisely
+# to prove the engine FINDS a password in a Web.config, so the string has to be there.
+tests/native.test.js:dotnet-connectionstring-password:36

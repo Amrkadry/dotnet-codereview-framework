@@ -1,0 +1,123 @@
+# dotnet-moraa-codereviewer — custom gitleaks ruleset for .NET configuration secrets
+#
+# WHY THIS EXISTS
+# Stock gitleaks rules target high-entropy, well-formatted tokens (AWS AKIA..., GitHub ghp_...,
+# private-key PEM blocks, JWTs). They do NOT match the way secrets actually appear in .NET
+# Framework applications: low-entropy human-chosen passwords inside XML attributes.
+#
+# Verified on a real legacy ASP.NET Framework application: stock gitleaks 8.28.0 scanned 49.18 MB and
+# reported "no leaks found", while Web.config contained a SQL Server password, a Dynamics CRM
+# administrator password, an SFTP password and credit-bureau credentials in cleartext.
+# That is a false negative, not a clean repository. These rules close that gap.
+#
+# USAGE
+#   gitleaks dir <path> --config rules/gitleaks/dotnet-config.toml --redact \
+#            --report-format sarif --report-path gitleaks.sarif
+
+title = "dotnet-moraa .NET configuration secrets"
+
+# Inherit the stock rules so we ADD coverage rather than replace it.
+[extend]
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# 1. ADO.NET / EF connection strings carrying an inline password
+# ---------------------------------------------------------------------------
+[[rules]]
+id = "dotnet-connectionstring-password"
+description = "ADO.NET connection string with inline password"
+regex = '''(?i)(?:password|pwd)\s*=\s*([^;"'<>\s][^;"'<>]{2,})'''
+secretGroup = 1
+keywords = ["password=", "pwd="]
+tags = ["dotnet", "connectionstring", "CWE-798"]
+[rules.allowlist]
+regexTarget = "match"
+regexes = [
+  '''(?i)password\s*=\s*(\{[^}]*\}|\$\([^)]*\)|%[A-Za-z_]+%|<[^>]*>)''', # tokenised placeholders
+  '''(?i)password\s*=\s*(changeme|placeholder|yourpassword|xxx+|\*+|todo)''',
+]
+
+# ---------------------------------------------------------------------------
+# 2. appSettings / <add key="..." value="..."> secrets
+#    Catches AdminPassword, ServicePassword, PASSWORD, Encryptionkey, ApiSecret, Token...
+# ---------------------------------------------------------------------------
+[[rules]]
+id = "dotnet-appsetting-secret"
+description = "Secret-bearing appSetting in a .NET config file"
+regex = '''(?i)<add\s+key\s*=\s*"[^"]*(password|pwd|secret|apikey|api[-_]?key|encryptionkey|privatekey|accesstoken|clientsecret|credential)[^"]*"\s+value\s*=\s*"([^"]{3,})"'''
+secretGroup = 2
+keywords = ["<add", "password", "secret", "apikey", "encryptionkey", "clientsecret"]
+tags = ["dotnet", "appsettings", "CWE-798", "CWE-540"]
+[rules.allowlist]
+regexTarget = "match"
+regexes = [
+  '''(?i)value\s*=\s*""''',                                   # empty = not a secret
+  '''(?i)value\s*=\s*"(\{[^}]*\}|\$\([^)]*\)|%[A-Za-z_]+%)"''', # tokenised for transform
+  '''(?i)value\s*=\s*"(false|true|changeme|placeholder|todo|n/a)"''',
+]
+
+# ---------------------------------------------------------------------------
+# 3. Commented-out credentials — the pattern that hides PRODUCTION secrets
+#    The reviewed application kept production credentials inside XML comments.
+# ---------------------------------------------------------------------------
+[[rules]]
+id = "dotnet-commented-credential"
+description = "Credential inside an XML comment (often the production value)"
+#
+# NOTE: Go's RE2 engine has no lookahead, so this cannot be written as
+# `<!--(?:(?!-->).)*?...`. A bounded lazy match is used instead, which RE2 does support.
+# v2: an earlier `.{0,600}?` bound produced a false positive by spanning from a prose comment
+# into a later live <add> element (a prose comment in Web.config). Requiring the comment to consist of
+# <add> elements removes that class of FP while still catching commented credential blocks.
+regex = '''(?is)<!--\s*(?:<add\s+key\s*=\s*"[^"]*"\s+value\s*=\s*"[^"]*"\s*/?>\s*){0,6}<add\s+key\s*=\s*"[^"]*(?:password|pwd|secret|apikey|encryptionkey)[^"]*"\s+value\s*=\s*"([^"]{3,})"'''
+secretGroup = 1
+keywords = ["<!--"]
+tags = ["dotnet", "appsettings", "commented", "CWE-540"]
+
+# ---------------------------------------------------------------------------
+# 4. WCF / Dynamics / service client credentials in code
+# ---------------------------------------------------------------------------
+[[rules]]
+id = "dotnet-inline-credential-assignment"
+description = "Credential assigned to a literal in C# source"
+regex = '''(?i)\.\s*(Password|ClientSecret|ApiKey|SecretKey|AccessKey)\s*=\s*"([^"]{4,})"'''
+secretGroup = 2
+keywords = ["Password =", "ClientSecret =", "ApiKey =", "SecretKey ="]
+tags = ["dotnet", "csharp", "CWE-798"]
+[rules.allowlist]
+regexTarget = "match"
+regexes = ['''(?i)=\s*"(\{[^}]*\}|changeme|placeholder|todo|)"''']
+
+# ---------------------------------------------------------------------------
+# 5. Symmetric key material that is obviously a weak literal
+#    e.g. a 16-digit sequential literal used as an AES key
+# ---------------------------------------------------------------------------
+[[rules]]
+id = "dotnet-weak-static-key"
+description = "Hard-coded symmetric key that looks like a placeholder-strength literal"
+regex = '''(?i)(?:encryptionkey|aeskey|cryptokey|machinekey|validationkey|decryptionkey)\s*"?\s*(?:=|value\s*=\s*)"?\s*([A-Za-z0-9+/=]{8,64})'''
+secretGroup = 1
+keywords = ["encryptionkey", "aeskey", "cryptokey", "machinekey", "validationkey"]
+tags = ["dotnet", "crypto", "CWE-321", "CWE-798"]
+
+# ---------------------------------------------------------------------------
+# Global allowlist — reduce noise from vendored/third-party trees
+# ---------------------------------------------------------------------------
+[allowlist]
+description = "Ignore build output, vendored packages and analyzer artifacts"
+paths = [
+  '''(^|/)packages/''',
+  '''(^|/)(bin|obj)/''',
+  '''(^|/)node_modules/''',
+  # This tool's OWN output. Both are in .gitignore and are never committed, but a
+  # `detect --no-git` filesystem scan does not consult .gitignore, so without these the
+  # repo's own hygiene gate warns forever about fixture data it generated itself -- and a
+  # gate that always warns is a gate people stop reading.
+  '''(^|/)\.moraa-tmp/''',
+  '''(^|/)\.moraa-review/''',
+  '''(^|/)\.sonarqube/''',
+  '''(^|/)\.vs/''',
+  '''\.(dll|pdb|exe|nupkg|xml\.bak)$''',
+  # Vendor XML docs ship sample credentials in <example> blocks
+  '''(^|/)[^/]*\.xml$''',
+]

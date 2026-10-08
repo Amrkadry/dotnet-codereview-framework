@@ -1,0 +1,54 @@
+# Author: Amr Kadry (github.com/Amrkadry) · MIT License
+# Self-CI for the framework repo itself: the exact gates a contributor runs locally,
+# on every push/PR plus a weekly schedule (advisories move without code moving).
+#
+#   adapter contract -> unit/e2e suite -> catalog coverage audit -> selfcheck
+#
+# selfcheck includes: the repo secret self-scan with our own .NET gitleaks ruleset
+# (with a canary that proves the gate is looking), an end-to-end `moraa review` on a
+# synthetic project, and repo hygiene checks. Zero npm dependencies: node only.
+#
+# (ci/github-actions.yml is the separate REFERENCE pipeline for scanning a TARGET app.)
+
+name: ci
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  schedule:
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # diff tests create repos with history
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install gitleaks (turns the skipped secret self-scan into a real gate)
+        run: |
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Adapter contract tests (fixtures, no tools needed)
+        run: node tools/test-adapters.js
+
+      - name: Unit + end-to-end suite
+        run: node --test tests/*.test.js
+
+      - name: Catalog coverage audit (strict)
+        run: node tools/audit-coverage.js --strict
+
+      - name: Selfcheck (secret self-scan, e2e review, hygiene)
+        run: node tools/selfcheck.js

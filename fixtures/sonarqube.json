@@ -1,0 +1,18 @@
+{
+  "issues": [
+    { "key": "AY1", "rule": "csharpsquid:S2068", "severity": "BLOCKER", "type": "VULNERABILITY",
+      "component": "sampleapp:SampleApp/Web.config", "line": 12,
+      "message": "Hard-coded credentials are security-sensitive.", "effort": "30min" },
+    { "key": "AY2", "rule": "csharpsquid:S6444", "severity": "MAJOR", "type": "CODE_SMELL",
+      "component": "sampleapp:SampleApp/Validation/EmailRule.cs", "line": 11,
+      "message": "Pass a timeout to limit the execution time." },
+    { "key": "AY3", "rule": "csharpsquid:S1450", "severity": "MINOR", "type": "CODE_SMELL",
+      "component": "sampleapp:SampleApp/Services/GlobalExceptionHandler.cs", "line": 16,
+      "message": "Remove the field and declare it as a local variable." },
+    { "key": "AY4", "rule": "csharpsquid:S4830", "severity": "CRITICAL", "type": "SECURITY_HOTSPOT",
+      "component": "sampleapp:SampleApp/Services/Http.cs", "line": 42,
+      "message": "Enable server certificate validation on this SSL/TLS connection.",
+      "securityCategory": "weak-cryptography", "vulnerabilityProbability": "HIGH" }
+  ],
+  "_pages": 1
+}

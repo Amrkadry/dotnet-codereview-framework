@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [{
+    "tool": { "driver": { "name": "toolx", "rules": [
+      { "id": "RULE-A", "shortDescription": { "text": "Rule A" } },
+      { "id": "RULE-B", "shortDescription": { "text": "Rule B" } }
+    ] } },
+    "results": [
+      { "ruleId": "RULE-A", "level": "error",
+        "message": { "text": "Finding with an empty location entry." },
+        "locations": [{}] },
+      { "ruleId": "RULE-B", "level": "error",
+        "message": { "text": "Finding with no locations array at all." } }
+    ]
+  }]
+}

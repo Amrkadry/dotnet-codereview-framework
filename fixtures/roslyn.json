@@ -1,0 +1,154 @@
+{
+  "tool": "roslyn",
+  "logs": [
+    {
+      "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+      "version": "2.1.0",
+      "runs": [
+        {
+          "tool": {
+            "driver": {
+              "name": "Microsoft (R) Visual C# Compiler",
+              "version": "4.11.0-3.24072.1",
+              "informationUri": "https://github.com/dotnet/roslyn",
+              "rules": [
+                {
+                  "id": "SCS0002",
+                  "name": "PotentialSqlInjection",
+                  "shortDescription": { "text": "Possible SQL Injection Vulnerability" },
+                  "fullDescription": { "text": "The database query is built by concatenating untrusted input. An attacker who controls the concatenated value can change the meaning of the query." },
+                  "helpUri": "https://security-code-scan.github.io/#SCS0002",
+                  "defaultConfiguration": { "level": "warning" },
+                  "properties": { "tags": ["SecurityCodeScan", "Security", "CWE", "CWE-89", "Injection"] }
+                },
+                {
+                  "id": "SCS0015",
+                  "name": "HardcodedPassword",
+                  "shortDescription": { "text": "Hardcoded Password" },
+                  "fullDescription": { "text": "A plaintext credential is embedded in source code. Anyone with access to the repository or the compiled binary can recover it." },
+                  "helpUri": "https://security-code-scan.github.io/#SCS0015",
+                  "defaultConfiguration": { "level": "warning" },
+                  "properties": { "tags": ["SecurityCodeScan", "Security", "CWE", "CWE-798"] }
+                },
+                {
+                  "id": "CA5359",
+                  "name": "DoNotDisableCertificateValidation",
+                  "shortDescription": { "text": "Do Not Disable Certificate Validation" },
+                  "fullDescription": { "text": "Disabling certificate validation makes the connection vulnerable to man-in-the-middle attacks." },
+                  "helpUri": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca5359",
+                  "defaultConfiguration": { "level": "warning" },
+                  "properties": { "tags": ["Security", "CWE", "CWE-295"] }
+                },
+                {
+                  "id": "CA3075",
+                  "name": "InsecureDtdProcessing",
+                  "shortDescription": { "text": "Insecure DTD processing in XML" },
+                  "fullDescription": { "text": "Using XmlUrlResolver without a secure resolver allows an XML External Entity (XXE) attack that can disclose files or reach internal network resources." },
+                  "helpUri": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/security-rules/ca3075",
+                  "defaultConfiguration": { "level": "warning" },
+                  "properties": { "tags": ["Security", "CWE", "CWE-611"] }
+                },
+                {
+                  "id": "CA1305",
+                  "name": "SpecifyIFormatProvider",
+                  "shortDescription": { "text": "Specify IFormatProvider" },
+                  "fullDescription": { "text": "The behavior of this call could vary based on the current user's locale settings. Pass an IFormatProvider explicitly." },
+                  "helpUri": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1305",
+                  "defaultConfiguration": { "level": "warning" },
+                  "properties": { "tags": ["Globalization", "Maintainability"] }
+                }
+              ]
+            }
+          },
+          "results": [
+            {
+              "ruleId": "SCS0002",
+              "level": "warning",
+              "message": { "text": "SCS0002: Possible SQL Injection vulnerability. The database query is built from an untrusted value." },
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": { "uri": "src/App/Controllers/BookingController.cs", "uriBaseId": "SRCROOT" },
+                    "region": {
+                      "startLine": 57,
+                      "endLine": 57,
+                      "snippet": { "text": "var sql = \"SELECT * FROM Orders WHERE Customer = '\" + borrowerName + \"'\";" }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "ruleId": "SCS0015",
+              "level": "warning",
+              "message": { "text": "SCS0015: Hardcoded credential found in source. Move it to a secret store and load it at runtime." },
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": { "uri": "src/App/Services/FtpExportService.cs", "uriBaseId": "SRCROOT" },
+                    "region": {
+                      "startLine": 23,
+                      "endLine": 23,
+                      "snippet": { "text": "public const string ReportAccountSecret = \"<hardcoded-value-redacted-for-review-copy>\";" }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "ruleId": "CA5359",
+              "level": "warning",
+              "message": { "text": "CA5359: Do Not Disable Certificate Validation. The callback accepts any server certificate." },
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": { "uri": "src/App/Services/CreditBureauClient.cs", "uriBaseId": "SRCROOT" },
+                    "region": {
+                      "startLine": 88,
+                      "endLine": 90,
+                      "snippet": { "text": "var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator };" }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "ruleId": "CA3075",
+              "level": "warning",
+              "message": { "text": "CA3075: Insecure DTD processing in XML. An unsafe XmlResolver may enable an XML External Entity attack." },
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": { "uri": "src/App/Utilities/XmlLoader.cs", "uriBaseId": "SRCROOT" },
+                    "region": {
+                      "startLine": 34,
+                      "endLine": 35,
+                      "snippet": { "text": "var doc = new XmlDocument { XmlResolver = new XmlUrlResolver() };" }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "ruleId": "CA1305",
+              "level": "warning",
+              "message": { "text": "CA1305: Specify IFormatProvider. The result of this call can vary based on the user's locale." },
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": { "uri": "src/App/Views/Booking/Summary.aspx.cs", "uriBaseId": "SRCROOT" },
+                    "region": {
+                      "startLine": 112,
+                      "endLine": 112,
+                      "snippet": { "text": "label.Text = string.Format(\"Total: {0:0.00}\", amount);" }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

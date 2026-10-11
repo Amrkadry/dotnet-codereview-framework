@@ -1,0 +1,25 @@
+{
+  "packages": [
+    { "packageId": "Newtonsoft.Json", "version": "9.0.1", "file": "App/packages.config", "line": 12, "vulnId": "GHSA-5crp-9r3c-p9vr" },
+    { "packageId": "Antlr", "version": "3.5.0.2", "file": "App/packages.config", "line": 31, "vulnId": "OSV-EXAMPLE-0001" }
+  ],
+  "vulns": [
+    {
+      "id": "GHSA-5crp-9r3c-p9vr",
+      "summary": "Vulnerable versions of Newtonsoft.Json allow improper handling of crafted JSON, leading to denial of service or deserialization issues.",
+      "database_specific": { "severity": "HIGH" },
+      "severity": [{ "type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" }],
+      "cwe": ["CWE-502"],
+      "affected": [
+        { "ranges": [{ "type": "ECOSYSTEM", "events": [{ "introduced": "0" }, { "fixed": "13.0.1" }] }] }
+      ]
+    },
+    {
+      "id": "OSV-EXAMPLE-0001",
+      "summary": "Example advisory with no fix published and no severity metadata.",
+      "affected": [
+        { "ranges": [{ "type": "ECOSYSTEM", "events": [{ "introduced": "0" }] }] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "_comment0": "TEMPLATE — copy to moraa.config.json and edit there. NEVER commit the real file: it is where real API keys live. Check .gitignore covers moraa.config.json before putting a real key anywhere in this file.",
+  "_comment1": "PRECEDENCE for every setting: CLI flag > environment variable > this file > built-in default. A layer only wins when it actually provides a value.",
+  "_comment2": "SECRETS: keys are NEVER printed anywhere; config-check and all logs show at most the last 4 characters. Prefer environment variables (MORAA_AI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, ZAI_API_KEY, SNYK_TOKEN) over putting keys in this file.",
+
+  "schema": 2,
+  "outDir": ".moraa-review",
+  "failOn": null,
+
+  "ai": {
+    "_comment3": "TWO INDEPENDENT OPT-IN MODES. Both DEFAULT TO OFF. With both off, nothing AI-related runs and no API key is required anywhere.",
+    "provider": "none",
+    "_comment4": "provider: none | auto | anthropic | openai | zai | local (local = any OpenAI-compatible endpoint; set ai.baseUrl). 'auto' resolves a provider only from whichever single key is present, and only for an explicitly enabled mode.",
+    "model": null,
+    "baseUrl": null,
+    "timeoutMs": 180000,
+    "maxTokens": 8000,
+
+    "report": {
+      "_comment5": "MODE 1 — 'report': post-processes an ALREADY-PRODUCED review (the Markdown projection + data/report.json), pulls the code snippet at each finding's line, and enriches each finding's own Markdown section IN PLACE with an unverified narrative. Idempotent: AI content lives inside stable markers and is replaced whole on re-run.",
+      "enabled": false,
+      "severityThreshold": "LOW",
+      "contextLines": 4,
+      "maxFindings": 50
+    },
+
+    "review": {
+      "_comment6": "MODE 2 — 'review': direct code review. The AI reads source files and produces findings attributed to tool 'ai-review'; they enter the canonical model and correlate like any other tool's findings. An AI finding never overrides, suppresses or outranks a tool finding; disagreements are recorded, never resolved.",
+      "enabled": false,
+      "severityThreshold": "LOW",
+      "maxFiles": 12,
+      "maxBytesPerFile": 60000
+    }
+  },
+
+  "keys": {
+    "_comment7": "Provider keys. Placeholders only here — replace in your LOCAL moraa.config.json, or better, keep them in the environment.",
+    "anthropic": null,
+    "openai": null,
+    "zai": null,
+    "local": null,
+    "snyk": null,
+    "sonar": null
+  },
+
+  "endpoints": {
+    "sonarqube": { "hostUrl": null, "projectKey": null }
+  },
+
+  "tools": {
+    "_comment8": "Per-adapter toggles consumed by the orchestrator (enabled !== false keeps an adapter in the run).",
+    "trivy": { "enabled": true },
+    "snyk": { "enabled": true },
+    "osv-scanner": { "enabled": true },
+    "dependency-check": { "enabled": false },
+    "gitleaks": { "enabled": true, "config": "rules/gitleaks/dotnet-config.toml" },
+    "semgrep": { "enabled": true, "config": "rules/semgrep/dotnet-moraa.yaml" },
+    "sonarqube": { "enabled": false, "projectKey": "my-project", "hostUrl": "http://localhost:9000" },
+    "ai-review": {
+      "_comment9": "Legacy pre-2.0 shape, still honoured: enabled here acts on MODE 2 ('review') only. Prefer ai.review.enabled.",
+      "enabled": false
+    }
+  }
+}

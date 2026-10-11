@@ -1,0 +1,41 @@
+[
+  {
+    "ok": false,
+    "projectName": "SampleApp",
+    "displayTargetFile": "SampleApp/packages.config",
+    "packageManager": "nuget",
+    "vulnerabilities": [
+      {
+        "id": "SNYK-DOTNET-NEWTONSOFTJSON-2774946",
+        "title": "Denial of Service (DoS)",
+        "severity": "high",
+        "cvssScore": 7.5,
+        "CVSSv3": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+        "identifiers": { "CVE": ["CVE-2024-21907"], "CWE": ["CWE-755"] },
+        "packageName": "Newtonsoft.Json",
+        "version": "11.0.1",
+        "from": ["SampleApp@1.0.0", "Newtonsoft.Json@11.0.1"],
+        "isUpgradable": true,
+        "isPatchable": false,
+        "upgradePath": [false, "Newtonsoft.Json@13.0.1"],
+        "fixedIn": ["13.0.1"],
+        "description": "Improper handling of exceptional conditions allows a crafted payload to cause unbounded resource consumption when deserializing deeply nested JSON."
+      },
+      {
+        "id": "SNYK-DOTNET-TRANSITIVELIB-111111",
+        "title": "Improper Certificate Validation",
+        "severity": "medium",
+        "cvssScore": 5.9,
+        "CVSSv3": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N",
+        "identifiers": { "CVE": ["CVE-2023-99999"], "CWE": ["CWE-295"] },
+        "packageName": "Transitive.Lib",
+        "version": "2.0.0",
+        "from": ["SampleApp@1.0.0", "Wrapper.Sdk@4.1.0", "Transitive.Lib@2.0.0"],
+        "isUpgradable": false,
+        "isPatchable": false,
+        "fixedIn": [],
+        "description": "The library does not verify the server certificate chain, permitting an active network attacker to intercept traffic."
+      }
+    ]
+  }
+]

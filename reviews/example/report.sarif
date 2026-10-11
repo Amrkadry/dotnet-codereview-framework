@@ -1,0 +1,386 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "dotnet-moraa-codereviewer",
+          "version": "1.0.0",
+          "informationUri": "https://moraa.dev",
+          "rules": [
+            {
+              "id": "SEC-AUTHZ-001",
+              "name": "SECAUTHZ001",
+              "shortDescription": {
+                "text": "No authorization enforced on API controllers"
+              },
+              "fullDescription": {
+                "text": "The controller declares no [Authorize] attribute and no global authorization filter is registered, so every action is reachable without a token. The action also returns an object located purely by a client-supplied id."
+              },
+              "help": {
+                "text": "Register a global AuthorizeAttribute so the default is deny, apply [AllowAnonymous] only where intended, and compare the resolved object's owner against a claim on the caller.",
+                "markdown": "**Impact**\n\nAny unauthenticated caller can read any order by iterating the id, and the same pattern on write actions would allow modification. This is both missing authentication and a horizontal IDOR.\n\n**Recommendation**\n\nRegister a global AuthorizeAttribute so the default is deny, apply [AllowAnonymous] only where intended, and compare the resolved object's owner against a claim on the caller."
+              },
+              "properties": {
+                "tags": [
+                  "moraa",
+                  "security",
+                  "broken-access-control",
+                  "CWE-862",
+                  "A01:2021"
+                ],
+                "security-severity": "9.8",
+                "precision": "very-high"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "SEC-CFG-001",
+              "name": "SECCFG001",
+              "shortDescription": {
+                "text": "Hard-coded database credentials in Web.config"
+              },
+              "fullDescription": {
+                "text": "A database password is stored in cleartext in Web.config, and the Release transform does not remove it, so it ships in the deployment artifact."
+              },
+              "help": {
+                "text": "Rotate the credential, move to Integrated Security so no password exists, or encrypt the configuration section. Add the .NET gitleaks ruleset to CI as a blocking gate with a canary.",
+                "markdown": "**Impact**\n\nAnyone with the repository, a build artifact or a server backup obtains direct database access without touching the application.\n\n**Recommendation**\n\nRotate the credential, move to Integrated Security so no password exists, or encrypt the configuration section. Add the .NET gitleaks ruleset to CI as a blocking gate with a canary."
+              },
+              "properties": {
+                "tags": [
+                  "moraa",
+                  "security",
+                  "secrets-management",
+                  "CWE-798",
+                  "CWE-540",
+                  "A07:2021",
+                  "A05:2021"
+                ],
+                "security-severity": "8.8",
+                "precision": "very-high"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "SEC-AUTH-001",
+              "name": "SECAUTH001",
+              "shortDescription": {
+                "text": "Directory bind accepts an empty password"
+              },
+              "fullDescription": {
+                "text": "ValidateCredentials is called with no guard against an empty password, over a bind that does not request SecureSocketLayer."
+              },
+              "help": {
+                "text": "Reject empty and whitespace credentials before the call, add ContextOptions.SecureSocketLayer, and resolve the host by DNS name so certificate validation can succeed.",
+                "markdown": "**Impact**\n\nValidateCredentials is documented to return true for an empty password against directories that permit unauthenticated binds. If that is the case here, supplying an empty password authenticates as any known username. The bind is also not carried over LDAPS.\n\n**Recommendation**\n\nReject empty and whitespace credentials before the call, add ContextOptions.SecureSocketLayer, and resolve the host by DNS name so certificate validation can succeed."
+              },
+              "properties": {
+                "tags": [
+                  "moraa",
+                  "security",
+                  "authentication",
+                  "CWE-287",
+                  "CWE-521",
+                  "A07:2021"
+                ],
+                "security-severity": "5.3",
+                "precision": "high"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "PERF-DOS-001",
+              "name": "PERFDOS001",
+              "shortDescription": {
+                "text": "Regex without a match timeout on a user-reachable path"
+              },
+              "fullDescription": {
+                "text": "The pattern uses nested quantifiers and is applied to request input with no match timeout. .NET regexes have no default timeout."
+              },
+              "help": {
+                "text": "Set a process-wide default at startup, pass an explicit TimeSpan, simplify the pattern to remove nested quantifiers, and cap input length before matching.",
+                "markdown": "**Impact**\n\nA crafted input forces catastrophic backtracking, pinning a CPU core for the request's lifetime. Unauthenticated and repeatable, this degrades availability.\n\n**Recommendation**\n\nSet a process-wide default at startup, pass an explicit TimeSpan, simplify the pattern to remove nested quantifiers, and cap input length before matching."
+              },
+              "properties": {
+                "tags": [
+                  "moraa",
+                  "performance",
+                  "redos",
+                  "CWE-1333",
+                  "A05:2021"
+                ],
+                "security-severity": "5.3",
+                "precision": "very-high"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "ARCH-001",
+              "name": "ARCH001",
+              "shortDescription": {
+                "text": "Duplicated calculation logic with divergent behaviour"
+              },
+              "fullDescription": {
+                "text": "One pricing rule is implemented twice with different rounding behaviour, so the two paths disagree on some inputs."
+              },
+              "help": {
+                "text": "Collapse to one implementation with an explicit, tested rounding policy; delete the other.",
+                "markdown": "**Impact**\n\nNot a vulnerability, which is why cvss is null — this is the worked example of a category that must never carry a CVSS score. The risk is that a fix applied to one implementation silently misses the other, and that two code paths produce different monetary results for identical inputs.\n\n**Recommendation**\n\nCollapse to one implementation with an explicit, tested rounding policy; delete the other."
+              },
+              "properties": {
+                "tags": [
+                  "moraa",
+                  "architecture",
+                  "maintainability",
+                  "CWE-1041",
+                  "CWE-561"
+                ],
+                "precision": "very-high"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "CFG-WEB-001",
+              "name": "CFGWEB001",
+              "shortDescription": {
+                "text": "X-Powered-By header exposes the framework"
+              },
+              "fullDescription": {
+                "text": "The X-Powered-By response header is not removed, disclosing the framework in use."
+              },
+              "help": {
+                "text": "Remove the header via customHeaders. Accepted for now because an upstream reverse proxy strips it in this environment.",
+                "markdown": "**Impact**\n\nMinimal on its own. Included here as the worked example of an ACCEPTED_RISK with a mandatory expiring suppression — the projection refuses to emit a suppression without an expiresOn date, so permanent silent suppression is structurally impossible.\n\n**Recommendation**\n\nRemove the header via customHeaders. Accepted for now because an upstream reverse proxy strips it in this environment."
+              },
+              "properties": {
+                "tags": [
+                  "moraa",
+                  "configuration",
+                  "hardening",
+                  "CWE-200",
+                  "A05:2021"
+                ],
+                "security-severity": "0",
+                "precision": "very-high"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "SEC-AUTHZ-001",
+          "level": "error",
+          "message": {
+            "text": "No authorization enforced on API controllers — Any unauthenticated caller can read any order by iterating the id, and the same pattern on write actions would allow modification."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "ExampleApp/Controllers/OrdersController.cs"
+                },
+                "region": {
+                  "startLine": 18,
+                  "endLine": 18
+                }
+              }
+            }
+          ],
+          "relatedLocations": [],
+          "partialFingerprints": {
+            "moraaFindingId": "SEC-AUTHZ-001"
+          },
+          "properties": {
+            "confidence": "CONFIRMED",
+            "status": "OPEN",
+            "priority": "P0",
+            "sources": [
+              "manual-review:REPORTED",
+              "sonarqube:MISSED"
+            ]
+          }
+        },
+        {
+          "ruleId": "SEC-CFG-001",
+          "level": "error",
+          "message": {
+            "text": "Hard-coded database credentials in Web.config — Anyone with the repository, a build artifact or a server backup obtains direct database access without touching the application.."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "ExampleApp/Web.config"
+                },
+                "region": {
+                  "startLine": 12,
+                  "endLine": 12
+                }
+              }
+            }
+          ],
+          "relatedLocations": [],
+          "partialFingerprints": {
+            "moraaFindingId": "SEC-CFG-001"
+          },
+          "properties": {
+            "confidence": "CONFIRMED",
+            "status": "OPEN",
+            "priority": "P0",
+            "sources": [
+              "manual-review:REPORTED",
+              "gitleaks-moraa-rules:REPORTED",
+              "gitleaks:FALSE_NEGATIVE"
+            ]
+          }
+        },
+        {
+          "ruleId": "SEC-AUTH-001",
+          "level": "error",
+          "message": {
+            "text": "Directory bind accepts an empty password — ValidateCredentials is documented to return true for an empty password against directories that permit unauthenticated binds."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "ExampleApp/Auth/DomainAuth.cs"
+                },
+                "region": {
+                  "startLine": 22,
+                  "endLine": 22
+                }
+              }
+            }
+          ],
+          "relatedLocations": [],
+          "partialFingerprints": {
+            "moraaFindingId": "SEC-AUTH-001"
+          },
+          "properties": {
+            "confidence": "LIKELY",
+            "status": "OPEN",
+            "priority": "P1",
+            "sources": [
+              "manual-review:REPORTED"
+            ]
+          }
+        },
+        {
+          "ruleId": "PERF-DOS-001",
+          "level": "warning",
+          "message": {
+            "text": "Regex without a match timeout on a user-reachable path — A crafted input forces catastrophic backtracking, pinning a CPU core for the request's lifetime."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "ExampleApp/Validation/EmailRule.cs"
+                },
+                "region": {
+                  "startLine": 11,
+                  "endLine": 11
+                }
+              }
+            }
+          ],
+          "relatedLocations": [],
+          "partialFingerprints": {
+            "moraaFindingId": "PERF-DOS-001"
+          },
+          "properties": {
+            "confidence": "CONFIRMED",
+            "status": "OPEN",
+            "priority": "P2",
+            "sources": [
+              "manual-review:REPORTED",
+              "sonarqube:REPORTED"
+            ]
+          }
+        },
+        {
+          "ruleId": "ARCH-001",
+          "level": "note",
+          "message": {
+            "text": "Duplicated calculation logic with divergent behaviour — Not a vulnerability, which is why cvss is null — this is the worked example of a category that must never carry a CVSS score."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "ExampleApp/Services/PricingService.cs"
+                },
+                "region": {
+                  "startLine": 40,
+                  "endLine": 40
+                }
+              }
+            }
+          ],
+          "relatedLocations": [],
+          "partialFingerprints": {
+            "moraaFindingId": "ARCH-001"
+          },
+          "properties": {
+            "confidence": "CONFIRMED",
+            "status": "OPEN",
+            "priority": "P3",
+            "sources": [
+              "manual-review:REPORTED",
+              "sonarqube:REPORTED"
+            ]
+          }
+        },
+        {
+          "ruleId": "CFG-WEB-001",
+          "level": "note",
+          "message": {
+            "text": "X-Powered-By header exposes the framework — Minimal on its own."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "ExampleApp/Web.config"
+                },
+                "region": {
+                  "startLine": 60,
+                  "endLine": 60
+                }
+              }
+            }
+          ],
+          "relatedLocations": [],
+          "partialFingerprints": {
+            "moraaFindingId": "CFG-WEB-001"
+          },
+          "properties": {
+            "confidence": "CONFIRMED",
+            "status": "ACCEPTED_RISK",
+            "priority": "P3",
+            "sources": [
+              "manual-review:REPORTED"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

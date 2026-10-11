@@ -1,0 +1,93 @@
+{
+ "author": "Amr Kadry (github.com/Amrkadry)",
+ "catalog": "C# hardening — gaps mined from Security Code Scan (SCS0001-0034), Microsoft CA security analyzers (CA2100/23xx/30xx/53xx-54xx) and Puma Scan against the existing A-Z catalog (2026-10-08)",
+ "categories": {
+  "CH": "C# hardening: distinguished-name injection, membership password policy, typed-deserialization surfaces, file races, dynamic serializers, shell escape via PowerShell"
+ },
+ "tests": [
+  {
+   "id": "CH-001",
+   "category": "CH",
+   "title": "LDAP distinguished name injection",
+   "lookFor": "DirectoryEntry paths, Rename/MoveTo/Invoke arguments or DN components built by concatenating unescaped input (SCS0026)",
+   "expected": "DN special characters (\\, /, #, +, <, >, ;, leading/trailing space) escaped before use in a distinguished name",
+   "stack": "both",
+   "type": "integration",
+   "priority": "high",
+   "automatable": "DETERMINISTIC",
+   "cwe": "CWE-90"
+  },
+  {
+   "id": "CH-002",
+   "category": "CH",
+   "title": "Membership password policy weak or unspecified",
+   "lookFor": "<membership> provider without minRequiredPasswordLength, or with it below 8; no passwordStrengthRegularExpression (SCS0032/0033/0034)",
+   "expected": "minimum length >= 8 (NIST: 15 without MFA) plus complexity/strength expression, or ASP.NET Identity defaults",
+   "stack": "framework",
+   "type": "unit",
+   "priority": "medium",
+   "automatable": "DETERMINISTIC",
+   "cwe": "CWE-521"
+  },
+  {
+   "id": "CH-003",
+   "category": "CH",
+   "title": "DataSet.ReadXml without type restriction",
+   "lookFor": "DataSet/DataTable.ReadXml over untrusted streams in default XmlReadMode (CA5370, CVE-2020-1147 family)",
+   "expected": "XmlReadMode.ReadSchema with a trusted schema, or Deny and allow types via XmlSchema with explicit restriction",
+   "stack": "both",
+   "type": "integration",
+   "priority": "high",
+   "automatable": "DETERMINISTIC",
+   "cwe": "CWE-502"
+  },
+  {
+   "id": "CH-004",
+   "category": "CH",
+   "title": "File.Exists check racing the later open",
+   "lookFor": "File.Exists(path) guarding File.Open/Delete/Move on the same path — the answer is stale before use (CWE-367)",
+   "expected": "open in a try/catch and handle FileNotFoundException/IOException instead of pre-checking existence",
+   "stack": "both",
+   "type": "unit",
+   "priority": "low",
+   "automatable": "DETERMINISTIC",
+   "cwe": "CWE-367"
+  },
+  {
+   "id": "CH-005",
+   "category": "CH",
+   "title": "XmlSerializer constructed from a caller-controlled type",
+   "lookFor": "new XmlSerializer(Type.GetType(<variable>)) or Assembly-qualified type names from input (CA5369)",
+   "expected": "a fixed set of known serializers built at startup; never resolve serializer types from input",
+   "stack": "both",
+   "type": "unit",
+   "priority": "high",
+   "automatable": "DETERMINISTIC",
+   "cwe": "CWE-502"
+  },
+  {
+   "id": "CH-006",
+   "category": "CH",
+   "title": "PowerShell launched through a shell with dynamic command text",
+   "lookFor": "Process.Start of powershell/pwsh with -Command, -EncodedCommand or -File built from concatenation or interpolation",
+   "expected": "no shell delegation; fixed script files with parameter binding; allowlisted arguments only",
+   "stack": "both",
+   "type": "integration",
+   "priority": "high",
+   "automatable": "DETERMINISTIC",
+   "cwe": "CWE-78"
+  },
+  {
+   "id": "CH-007",
+   "category": "CH",
+   "title": "NTLM credentials exposed to non-domain endpoints",
+   "lookFor": "DefaultCredentials/DefaultNetworkCredentials used against non-Windows or internet-reachable hosts — NTLM auth material leaks to systems that should never see it",
+   "expected": "explicit credentials scoped per-endpoint; Negotiate with NTLM blocked where the peer is not domain-joined",
+   "stack": "both",
+   "type": "integration",
+   "priority": "medium",
+   "automatable": "MANUAL",
+   "cwe": "CWE-522"
+  }
+ ]
+}

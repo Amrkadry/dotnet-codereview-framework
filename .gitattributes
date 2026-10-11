@@ -1,0 +1,23 @@
+# Normalize line endings: LF in the repository, native on checkout.
+* text=auto
+
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.toml text eol=lf
+*.cs text eol=lf
+*.config text eol=lf
+
+*.ps1 text eol=crlf
+*.sln text eol=crlf
+
+# binaries
+*.png binary
+*.jpg binary
+*.zip binary
+*.7z binary
+*.dll binary
+*.exe binary

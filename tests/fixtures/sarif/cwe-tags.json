@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [{
+    "tool": { "driver": { "name": "toolx", "rules": [
+      { "id": "R-CWE-TAGS", "shortDescription": { "text": "Rule with CWE inside a tag label" },
+        "properties": { "tags": ["security", "CWE-295: Improper Certificate Validation"] } },
+      { "id": "R-CWE-NONE", "shortDescription": { "text": "Rule with no CWE anywhere" },
+        "properties": { "tags": ["maintainability"] } }
+    ] } },
+    "results": [
+      { "ruleId": "R-CWE-TAGS", "level": "error",
+        "message": { "text": "Certificate validation disabled." },
+        "locations": [{ "physicalLocation": {
+          "artifactLocation": { "uri": "SampleApp/Services/Http.cs" },
+          "region": { "startLine": 42 } } }] },
+      { "ruleId": "R-CWE-NONE", "level": "warning",
+        "message": { "text": "No CWE on this one." },
+        "locations": [{ "physicalLocation": {
+          "artifactLocation": { "uri": "SampleApp/Services/Other.cs" },
+          "region": { "startLine": 5 } } }] }
+    ]
+  }]
+}

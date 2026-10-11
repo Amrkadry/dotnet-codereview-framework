@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [{
+    "tool": { "driver": { "name": "toolx", "rules": [
+      { "id": "R-SECSEV", "defaultConfiguration": { "level": "note" } },
+      { "id": "R-ERROR", "defaultConfiguration": { "level": "error" } },
+      { "id": "R-WARNING" },
+      { "id": "R-NOTE" }
+    ] } },
+    "results": [
+      { "ruleId": "R-SECSEV", "level": "note",
+        "message": { "text": "security-severity 9.1 must outrank the note level." },
+        "properties": { "security-severity": "9.1" },
+        "locations": [{ "physicalLocation": {
+          "artifactLocation": { "uri": "SampleApp/Services/Crypto.cs" },
+          "region": { "startLine": 30 } } }] },
+      { "ruleId": "R-ERROR", "level": "error",
+        "message": { "text": "level error with no security-severity." },
+        "locations": [{ "physicalLocation": {
+          "artifactLocation": { "uri": "SampleApp/Services/Http.cs" },
+          "region": { "startLine": 42 } } }] },
+      { "ruleId": "R-WARNING", "level": "warning",
+        "message": { "text": "level warning with no security-severity." },
+        "locations": [{ "physicalLocation": {
+          "artifactLocation": { "uri": "SampleApp/Services/Http.cs" },
+          "region": { "startLine": 43 } } }] },
+      { "ruleId": "R-NOTE", "level": "note",
+        "message": { "text": "level note with no security-severity." },
+        "locations": [{ "physicalLocation": {
+          "artifactLocation": { "uri": "SampleApp/Services/Http.cs" },
+          "region": { "startLine": 44 } } }] }
+    ]
+  }]
+}
